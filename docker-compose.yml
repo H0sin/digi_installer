@@ -16,7 +16,6 @@
       - "8404:8404"
     volumes:
       - ./haproxy/haproxy.cfg.template:/usr/local/etc/haproxy/haproxy.cfg.template:ro
-      - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - ${CERTS_PATH}:/etc/ssl/private:ro
     networks:
       - web
