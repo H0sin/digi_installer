@@ -26,8 +26,8 @@
       - portainer
     command: >
       /bin/sh -c "
-        envsubst < /usr/local/etc/haproxy/haproxy.cfg.template > /usr/local/etc/haproxy/haproxy.cfg && 
-        haproxy -f /usr/local/etc/haproxy/haproxy.cfg
+        envsubst < /usr/local/etc/haproxy/haproxy.cfg.template > /tmp/haproxy.cfg && 
+        haproxy -f /tmp/haproxy.cfg
       "
 
   # 🌐 Main ASP.NET Core Web App
