@@ -111,10 +111,10 @@
 
   # 🛠 Background Processor
   processor:
-    image: ${Processor_IMAGE}
+    image: ${PROCESSER_IMAGE}
     restart: unless-stopped
     deploy:
-      replicas: ${Processor_REPLICAS:-1}
+      replicas: ${PROCESSER_REPLICAS:-1}
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
