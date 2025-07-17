@@ -1,0 +1,67 @@
+﻿global
+    # Runs in the foreground for Docker compatibility
+    log stdout format raw local0
+    ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+    ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+
+defaults
+    mode http
+    log global
+    option httplog
+    # Forwards the client's IP address to the backend
+    option forwardfor
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+
+# --- HTTP to HTTPS Redirect ---
+frontend http_frontend
+    bind *:80
+    redirect scheme https code 301 if !{ ssl_fc }
+
+# --- HTTPS Input ---
+frontend https_frontend
+    bind *:443 ssl crt /etc/ssl/private/haproxy-bundle.pem alpn h2,http/1.1
+    http-request set-header X-Forwarded-Proto https
+    # Adds HSTS security header
+    http-response set-header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+    # --- Routing Rules based on Domain Name from .env file ---
+    acl host_webapp    hdr(host) -i $DOMAIN
+    acl host_rabbitmq  hdr(host) -i $RABBITMQ_DOMAIN
+    acl host_pgadmin   hdr(host) -i $PGADMIN_DOMAIN
+    acl host_portainer hdr(host) -i $PORTAINER_DOMAIN
+
+    use_backend webapp_backend    if host_webapp
+    use_backend rabbitmq_backend  if host_rabbitmq
+    use_backend pgadmin_backend   if host_pgadmin
+    use_backend portainer_backend if host_portainer
+
+# --- Backend Service Definitions ---
+backend webapp_backend
+    balance roundrobin
+    # Corrected port to 8080 based on your ASPNETCORE_URLS
+    server webapp1 webapp:8080 check
+
+backend rabbitmq_backend
+    balance roundrobin
+    server rabbitmq1 rabbitmq:15672 check
+
+backend pgadmin_backend
+    balance roundrobin
+    server pgadmin1 pgadmin:80 check
+
+backend portainer_backend
+    balance roundrobin
+    server portainer1 portainer:9000 check
+
+# --- HAProxy Statistics Page ---
+listen stats
+    bind *:8404
+    mode http
+    stats enable
+    stats uri /stats
+    stats realm "HAProxy Statistics"
+    # Uses the password from the .env file
+    stats auth admin:${HAPROXY_STATS_PASS}
+    stats refresh 10s
