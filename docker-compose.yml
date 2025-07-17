@@ -109,12 +109,12 @@
     networks:
       - web
 
-  # 🛠 Background Worker
-  worker:
-    image: ${WORKER_IMAGE}
+  # 🛠 Background Processor
+  processor:
+    image: ${Processor_IMAGE}
     restart: unless-stopped
     deploy:
-      replicas: ${WORKER_REPLICAS:-1}
+      replicas: ${Processor_REPLICAS:-1}
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
