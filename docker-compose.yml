@@ -4,6 +4,7 @@
     image: haproxy:2.8
     container_name: haproxy
     restart: unless-stopped
+    user: root
     environment:
       - DOMAIN=${DOMAIN}
       - RABBITMQ_DOMAIN=${RABBITMQ_DOMAIN}
