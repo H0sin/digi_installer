@@ -26,7 +26,11 @@
       - pgadmin
       - portainer
     entrypoint: /usr/local/bin/entrypoint.sh
-    command: haproxy -f /usr/local/etc/haproxy/haproxy.cfg
+    command: >
+      /bin/sh -c "
+        envsubst < /usr/local/etc/haproxy/haproxy.cfg.template > /usr/local/etc/haproxy/haproxy.cfg && 
+        haproxy -f /usr/local/etc/haproxy/haproxy.cfg
+      "
 
   # 🌐 Main ASP.NET Core Web App
   webapp:
