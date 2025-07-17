@@ -24,7 +24,6 @@
       - rabbitmq
       - pgadmin
       - portainer
-    entrypoint: /usr/local/bin/entrypoint.sh
     command: >
       /bin/sh -c "
         envsubst < /usr/local/etc/haproxy/haproxy.cfg.template > /usr/local/etc/haproxy/haproxy.cfg && 
