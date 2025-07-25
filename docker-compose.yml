@@ -31,6 +31,14 @@
         envsubst < /usr/local/etc/haproxy/haproxy.cfg.template > /tmp/haproxy.cfg && 
         haproxy -f /tmp/haproxy.cfg
       "
+  
+  # ⚛️ React Client App
+  client-app:
+    image: ${CLIENT_APP_IMAGE}
+    container_name: ${COMPOSE_PROJECT_NAME}-client-app
+    restart: unless-stopped
+    networks:
+      - web
 
   # 🌐 Main ASP.NET Core Web App
   webapp:
