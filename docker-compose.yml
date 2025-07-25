@@ -51,6 +51,7 @@
       - RabbitMq__HOST=rabbitmq
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASS}
+      - DOMAIN=${DOMAIN}
     networks:
       - web
       - internal
@@ -134,6 +135,7 @@
       - RabbitMq__HOST=rabbitmq
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASS}
+      - DOMAIN=${DOMAIN}
     networks:
       - internal
     depends_on:
