@@ -29,7 +29,7 @@
       /bin/sh -c "
         apt-get update && apt-get install -y gettext-base &&
         envsubst < /usr/local/etc/haproxy/haproxy.cfg.template > /tmp/haproxy.cfg && 
-        haproxy -f /tmp/haproxy.cfg
+        haproxy -f /tmp/haproxy.cfg -db
       "
   
   # ⚛️ React Client App
