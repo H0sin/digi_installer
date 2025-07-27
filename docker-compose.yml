@@ -39,7 +39,10 @@
     restart: unless-stopped
     networks:
       - web
-
+    environment:
+      - DOMAIN=https://${DOMAIN}
+  
+  
   # 🌐 Main ASP.NET Core Web App
   webapp:
     image: ${WEBAPP_IMAGE}
