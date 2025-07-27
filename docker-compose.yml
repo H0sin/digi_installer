@@ -40,7 +40,7 @@
     networks:
       - web
     environment:
-      - DOMAIN=https://${DOMAIN}
+      - VITE_BASE_API=${VITE_BASE_API}
   
   
   # 🌐 Main ASP.NET Core Web App
