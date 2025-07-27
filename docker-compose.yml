@@ -137,6 +137,7 @@
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASS}
       - DOMAIN=${DOMAIN}
+      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
     networks:
       - internal
     depends_on:
