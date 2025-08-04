@@ -41,8 +41,6 @@
       - web
     environment:
       - VITE_BASE_API=${VITE_BASE_API}
-  
-  
   # 🌐 Main ASP.NET Core Web App
   webapp:
     image: ${WEBAPP_IMAGE}
@@ -64,7 +62,6 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-
   # 🐰 RabbitMQ Broker with UI
   rabbitmq:
     image: rabbitmq:3-management
@@ -81,7 +78,6 @@
       interval: 30s
       timeout: 10s
       retries: 5
-
   # 🐘 PostgreSQL Database
   postgres:
     image: postgres:16-alpine
@@ -100,7 +96,6 @@
       interval: 10s
       timeout: 5s
       retries: 5
-
   # 🧑‍💻 pgAdmin for DB Management
   pgadmin:
     image: dpage/pgadmin4
@@ -114,7 +109,6 @@
       - internal
     depends_on:
       - postgres
-
   # 📊 Portainer Dashboard
   portainer:
     image: portainer/portainer-ce:latest
@@ -126,7 +120,6 @@
       - portainer-data:/data
     networks:
       - web
-
   # 🛠 Background Processor
   processor:
     image: ${PROCESSER_IMAGE}
@@ -141,6 +134,25 @@
       - RabbitMq__Password=${RABBITMQ_PASS}
       - DOMAIN=${DOMAIN}
       - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+  # 🛠 Order Worker
+  order-worker:
+    image: ${ORDER_WORKER_IMAGE}
+    restart: unless-stopped
+    deploy:
+      replicas: ${ORDER_WORKER_REPLICAS:-1}
+    environment:
+      - RabbitMq__HOST=rabbitmq
+      - RabbitMq__Username=${RABBITMQ_USER}
+      - RabbitMq__Password=${RABBITMQ_PASS}
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - ASPNETCORE_ENVIRONMENT=Production
     networks:
       - internal
     depends_on:
