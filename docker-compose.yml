@@ -136,6 +136,7 @@
       - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
     networks:
       - internal
+      - web
     depends_on:
       postgres:
         condition: service_healthy
