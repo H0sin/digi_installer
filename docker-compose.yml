@@ -185,9 +185,9 @@
     networks:
       - internal
     healthcheck:
-      test: [ "CMD", "memcached-tool", "127.0.0.1:11211", "stats" ]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "nc", "-z", "localhost", "11211"]
+      interval: 5s
+      timeout: 2s
       retries: 5
 
 
