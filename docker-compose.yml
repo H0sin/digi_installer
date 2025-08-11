@@ -1,4 +1,4 @@
-﻿services:
+﻿services:  
   # 🚪 Reverse Proxy (HAProxy)
   haproxy:
     image: haproxy:2.8
@@ -41,6 +41,7 @@
       - web
     environment:
       - VITE_BASE_API=${VITE_BASE_API}
+
   # 🌐 Main ASP.NET Core Web App
   webapp:
     image: ${WEBAPP_IMAGE}
@@ -54,6 +55,8 @@
       - RabbitMq__Password=${RABBITMQ_PASS}
       - DOMAIN=${DOMAIN}
       - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
+      - Memcached__HOST=${MEMCACHED_HOST}
+      - Memcached__Port=${MEMCACHED_PORT}
     networks:
       - web
       - internal
@@ -62,6 +65,9 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      memcached: 
+        condition: service_healthy
+        
   # 🐰 RabbitMQ Broker with UI
   rabbitmq:
     image: rabbitmq:3-management
@@ -78,6 +84,7 @@
       interval: 30s
       timeout: 10s
       retries: 5
+      
   # 🐘 PostgreSQL Database
   postgres:
     image: postgres:16-alpine
@@ -96,6 +103,7 @@
       interval: 10s
       timeout: 5s
       retries: 5
+      
   # 🧑‍💻 pgAdmin for DB Management
   pgadmin:
     image: dpage/pgadmin4
@@ -109,6 +117,7 @@
       - internal
     depends_on:
       - postgres
+
   # 📊 Portainer Dashboard
   portainer:
     image: portainer/portainer-ce:latest
@@ -120,6 +129,7 @@
       - portainer-data:/data
     networks:
       - web
+
   # 🛠 Background Processor
   processor:
     image: ${PROCESSER_IMAGE}
@@ -134,6 +144,8 @@
       - RabbitMq__Password=${RABBITMQ_PASS}
       - DOMAIN=${DOMAIN}
       - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
+      - Memcached__HOST=${MEMCACHED_HOST}
+      - Memcached__Port=${MEMCACHED_PORT}
     networks:
       - internal
       - web
@@ -142,6 +154,9 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      memcached:
+        condition: service_healthy
+        
   # 🛠 Order Worker
   order-worker:
     image: ${ORDER_WORKER_IMAGE}
@@ -161,6 +176,20 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        
+  # 🚀 Memcached for Caching
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: memcached
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD", "memcached-tool", "127.0.0.1:11211", "stats" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
 # =============================
 # 🔄 Volumes & Networks
