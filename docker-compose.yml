@@ -11,6 +11,8 @@
       - PGADMIN_DOMAIN=${PGADMIN_DOMAIN}
       - PORTAINER_DOMAIN=${PORTAINER_DOMAIN}
       - HAPROXY_STATS_PASS=${HAPROXY_STATS_PASS}
+      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
+      - REDISINSIGHT_DOMAIN=${REDISINSIGHT_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
@@ -25,6 +27,8 @@
       - rabbitmq
       - pgadmin
       - portainer
+      - client-app
+      - redisinsight
     command: >
       /bin/sh -c "
         apt-get update && apt-get install -y gettext-base &&
