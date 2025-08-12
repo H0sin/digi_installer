@@ -39,6 +39,7 @@ frontend https_frontend
     acl host_rabbitmq   hdr(host) -i ${RABBITMQ_DOMAIN}
     acl host_pgadmin    hdr(host) -i ${PGADMIN_DOMAIN}
     acl host_portainer  hdr(host) -i ${PORTAINER_DOMAIN}
+    acl host_redisinsight hdr(host) -i ${REDISINSIGHT_DOMAIN}
 
     # --- Use backends based on the routing rules ---
     use_backend client_app_backend if host_client_app
@@ -46,6 +47,7 @@ frontend https_frontend
     use_backend rabbitmq_backend   if host_rabbitmq
     use_backend pgadmin_backend    if host_pgadmin
     use_backend portainer_backend  if host_portainer
+    use_backend redisinsight_backend if host_redisinsight
     
     # A default backend is good practice
     default_backend client_app_backend
@@ -76,6 +78,11 @@ backend pgadmin_backend
 backend portainer_backend
     balance roundrobin
     server portainer1 portainer:9000 check
+    
+# Backend for RedisInsight - ADD THIS SECTION
+backend redisinsight_backend
+    balance roundrobin
+    server redisinsight1 redisinsight:8001 check
 
 # --- HAProxy Statistics Page ---
 listen stats

@@ -1,4 +1,4 @@
-﻿services:  
+﻿services:
   # 🚪 Reverse Proxy (HAProxy)
   haproxy:
     image: haproxy:2.8
@@ -55,8 +55,11 @@
       - RabbitMq__Password=${RABBITMQ_PASS}
       - DOMAIN=${DOMAIN}
       - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
-      - Memcached__HOST=${MEMCACHED_HOST}
-      - Memcached__Port=${MEMCACHED_PORT}
+      - Redis__Host=redis
+      - Redis__Port=6379
+      - Redis__Password=${REDIS_PASSWORD}
+      - Redis__AbortConnect=false
+      - Redis__DefaultAbsoluteExpirationSeconds=300
     networks:
       - web
       - internal
@@ -65,9 +68,11 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      memcached: 
+      memcached:
         condition: service_healthy
-        
+      redis:
+        condition: service_healthy
+  
   # 🐰 RabbitMQ Broker with UI
   rabbitmq:
     image: rabbitmq:3-management
@@ -80,11 +85,11 @@
       - internal
       - web
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
       interval: 30s
       timeout: 10s
       retries: 5
-      
+  
   # 🐘 PostgreSQL Database
   postgres:
     image: postgres:16-alpine
@@ -99,11 +104,11 @@
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
-      
+  
   # 🧑‍💻 pgAdmin for DB Management
   pgadmin:
     image: dpage/pgadmin4
@@ -144,8 +149,11 @@
       - RabbitMq__Password=${RABBITMQ_PASS}
       - DOMAIN=${DOMAIN}
       - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
-      - Memcached__HOST=${MEMCACHED_HOST}
-      - Memcached__Port=${MEMCACHED_PORT}
+      - Redis__Host=redis
+      - Redis__Port=6379
+      - Redis__Password=${REDIS_PASSWORD}
+      - Redis__AbortConnect=false
+      - Redis__DefaultAbsoluteExpirationSeconds=300
     networks:
       - internal
       - web
@@ -154,9 +162,9 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      memcached:
+      redis:
         condition: service_healthy
-        
+  
   # 🛠 Order Worker
   order-worker:
     image: ${ORDER_WORKER_IMAGE}
@@ -176,20 +184,44 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-        
-  # 🚀 Memcached for Caching
-  memcached:
-    image: memcached:1.6-alpine
-    container_name: memcached
+  
+  # 🚀 Redis for Caching
+  redis:
+    image: redis:7-alpine
+    container_name: redis
     restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-512mb}
+      - --maxmemory-policy
+      - allkeys-lru
+      - --requirepass
+      - ${REDIS_PASSWORD}
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "11211"]
+      test: [ "CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep PONG" ]
       interval: 5s
       timeout: 2s
       retries: 5
-
+      
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: redisinsight
+    restart: unless-stopped
+    networks:
+      - internal
+      - web
+    depends_on:
+      - redis
+    environment:
+      - REDISINSIGHT_HOST=${REDIS_INSIGHT_HOST:-0.0.0.0}
+      - REDISINSIGHT_PORT=${REDIS_INSIGHT_PORT:-8001}
 
 # =============================
 # 🔄 Volumes & Networks
