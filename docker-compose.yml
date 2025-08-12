@@ -217,9 +217,6 @@
       - web
     depends_on:
       - redis
-    environment:
-      - REDISINSIGHT_HOST=${REDIS_INSIGHT_HOST:-0.0.0.0}
-      - REDISINSIGHT_PORT=${REDIS_INSIGHT_PORT:-8001}
 
 # =============================
 # 🔄 Volumes & Networks

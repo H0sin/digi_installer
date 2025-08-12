@@ -82,7 +82,7 @@ backend portainer_backend
 # Backend for RedisInsight - ADD THIS SECTION
 backend redisinsight_backend
     balance roundrobin
-    server redisinsight1 redisinsight:8001 check
+    server redisinsight1 redisinsight:5540 check
 
 # --- HAProxy Statistics Page ---
 listen stats
