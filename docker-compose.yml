@@ -179,6 +179,11 @@
       - RabbitMq__Password=${RABBITMQ_PASS}
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
+      - Redis__Host=redis
+      - Redis__Port=6379
+      - Redis__Password=${REDIS_PASSWORD}
+      - Redis__AbortConnect=false
+      - Redis__DefaultAbsoluteExpirationSeconds=300
     networks:
       - internal
       - web
