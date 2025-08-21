@@ -181,6 +181,7 @@
       - ASPNETCORE_ENVIRONMENT=Production
     networks:
       - internal
+      - web
     depends_on:
       postgres:
         condition: service_healthy
