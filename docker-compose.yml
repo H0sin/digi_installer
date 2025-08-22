@@ -66,13 +66,13 @@
       - Redis__DefaultAbsoluteExpirationSeconds=300
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
       - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
-      - TelegramLogger__Topics__Default = ${TELEGRAMLOGGER__TOPICS__DEFAULT}
-      - TelegramLogger__Topics__Information = ${TELEGRAMLOGGER__TOPICS__INFORMATION}
-      - TelegramLogger__Topics__Warning = ${TELEGRAMLOGGER__TOPICS__WARNING}
-      - TelegramLogger__Topics__Error = ${TELEGRAMLOGGER__TOPICS__ERROR}
-      - TelegramLogger__Topics__Critical = ${TELEGRAMLOGGER__TOPICS__CRITICAL}
-      - TelegramLogger__Topics__Orders = ${TELEGRAMLOGGER__TOPICS__ORDERS}
-      - TelegramLogger__Topics__Payments = ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT}
+      - TelegramLogger__Topics__Information=${TELEGRAMLOGGER__TOPICS__INFORMATION}
+      - TelegramLogger__Topics__Warning=${TELEGRAMLOGGER__TOPICS__WARNING}
+      - TelegramLogger__Topics__Error=${TELEGRAMLOGGER__TOPICS__ERROR}
+      - TelegramLogger__Topics__Critical=${TELEGRAMLOGGER__TOPICS__CRITICAL}
+      - TelegramLogger__Topics__Orders=${TELEGRAMLOGGER__TOPICS__ORDERS}
+      - TelegramLogger__Topics__Payments=${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - web
       - internal
@@ -167,13 +167,13 @@
       - Redis__DefaultAbsoluteExpirationSeconds=300
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
       - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
-      - TelegramLogger__Topics__Default = ${TELEGRAMLOGGER__TOPICS__DEFAULT}
-      - TelegramLogger__Topics__Information = ${TELEGRAMLOGGER__TOPICS__INFORMATION}
-      - TelegramLogger__Topics__Warning = ${TELEGRAMLOGGER__TOPICS__WARNING}
-      - TelegramLogger__Topics__Error = ${TELEGRAMLOGGER__TOPICS__ERROR}
-      - TelegramLogger__Topics__Critical = ${TELEGRAMLOGGER__TOPICS__CRITICAL}
-      - TelegramLogger__Topics__Orders = ${TELEGRAMLOGGER__TOPICS__ORDERS}
-      - TelegramLogger__Topics__Payments = ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT}
+      - TelegramLogger__Topics__Information=${TELEGRAMLOGGER__TOPICS__INFORMATION}
+      - TelegramLogger__Topics__Warning=${TELEGRAMLOGGER__TOPICS__WARNING}
+      - TelegramLogger__Topics__Error=${TELEGRAMLOGGER__TOPICS__ERROR}
+      - TelegramLogger__Topics__Critical=${TELEGRAMLOGGER__TOPICS__CRITICAL}
+      - TelegramLogger__Topics__Orders=${TELEGRAMLOGGER__TOPICS__ORDERS}
+      - TelegramLogger__Topics__Payments=${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - internal
       - web
@@ -204,13 +204,13 @@
       - Redis__DefaultAbsoluteExpirationSeconds=300
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
       - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
-      - TelegramLogger__Topics__Default = ${TELEGRAMLOGGER__TOPICS__DEFAULT}
-      - TelegramLogger__Topics__Information = ${TELEGRAMLOGGER__TOPICS__INFORMATION}
-      - TelegramLogger__Topics__Warning = ${TELEGRAMLOGGER__TOPICS__WARNING}
-      - TelegramLogger__Topics__Error = ${TELEGRAMLOGGER__TOPICS__ERROR}
-      - TelegramLogger__Topics__Critical = ${TELEGRAMLOGGER__TOPICS__CRITICAL}
-      - TelegramLogger__Topics__Orders = ${TELEGRAMLOGGER__TOPICS__ORDERS}
-      - TelegramLogger__Topics__Payments = ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT}
+      - TelegramLogger__Topics__Information=${TELEGRAMLOGGER__TOPICS__INFORMATION}
+      - TelegramLogger__Topics__Warning=${TELEGRAMLOGGER__TOPICS__WARNING}
+      - TelegramLogger__Topics__Error=${TELEGRAMLOGGER__TOPICS__ERROR}
+      - TelegramLogger__Topics__Critical=${TELEGRAMLOGGER__TOPICS__CRITICAL}
+      - TelegramLogger__Topics__Orders=${TELEGRAMLOGGER__TOPICS__ORDERS}
+      - TelegramLogger__Topics__Payments=${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - internal
       - web
