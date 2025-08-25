@@ -50,6 +50,7 @@ backend client_app_backend
 
 backend webapp_backend
     balance roundrobin
+    option httpchk GET /health HTTP/1.1\r\nHost:\ localhost
     server webapp1 webapp:8080 check resolvers docker_resolver resolve-prefer ipv4
 
 backend rabbitmq_backend
