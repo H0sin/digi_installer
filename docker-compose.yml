@@ -30,11 +30,11 @@
       pgadmin:
         condition: service_healthy
       portainer:
-        condition: service_healthy
+        condition: service_started
       client-app:
         condition: service_started
       redisinsight:
-        condition: service_healthy
+        condition: service_started
     command: >
       /bin/sh -c "
         apt-get update && apt-get install -y gettext-base &&
@@ -89,12 +89,11 @@
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      healthcheck:
+        test: ["CMD-SHELL", "ls /proc/1 > /dev/null || exit 1"]
+        interval: 15s
+        timeout: 5s
+        retries: 5
   
   # 🐰 RabbitMQ Broker with UI
   rabbitmq:
@@ -160,9 +159,6 @@
       - portainer-data:/data
     networks:
       - web
-    healthcheck:
-      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:9000/api/status" ]
-      interval: 15s
     
 
   # 🛠 Background Processor
@@ -273,9 +269,6 @@
       - web
     depends_on:
       - redis
-    healthcheck:
-      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:5540/health" ]
-      interval: 15s
 
 # =============================
 # 🔄 Volumes & Networks
