@@ -23,12 +23,18 @@
     networks:
       - web
     depends_on:
-      - webapp
-      - rabbitmq
-      - pgadmin
-      - portainer
-      - client-app
-      - redisinsight
+      webapp:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      pgadmin:
+        condition: service_healthy
+      portainer:
+        condition: service_healthy
+      client-app:
+        condition: service_started
+      redisinsight:
+        condition: service_healthy
     command: >
       /bin/sh -c "
         apt-get update && apt-get install -y gettext-base &&
@@ -83,6 +89,12 @@
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   
   # 🐰 RabbitMQ Broker with UI
   rabbitmq:
@@ -133,6 +145,9 @@
       - internal
     depends_on:
       - postgres
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/misc/ping" ]
+      interval: 15s
 
   # 📊 Portainer Dashboard
   portainer:
@@ -145,6 +160,10 @@
       - portainer-data:/data
     networks:
       - web
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/api/status" ]
+      interval: 15s
+    
 
   # 🛠 Background Processor
   processor:
@@ -254,6 +273,9 @@
       - web
     depends_on:
       - redis
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5540/health" ] # آدرس health ممکن است متفاوت باشد
+      interval: 15s
 
 # =============================
 # 🔄 Volumes & Networks
