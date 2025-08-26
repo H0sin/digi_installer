@@ -1,5 +1,9 @@
+# haproxy/haproxy.cfg.template
+
 global
+    # Runs in the foreground for Docker compatibility and logs to stdout
     log stdout format raw local0
+    # Modern TLS settings
     ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
     ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
     daemon
@@ -8,26 +12,28 @@ defaults
     mode http
     log global
     option httplog
+    # Forwards the client's IP address to the backend services
     option forwardfor
     timeout connect 5s
     timeout client 30s
     timeout server 30s
 
-resolvers docker_resolver
-    nameserver dns 127.0.0.11:53
-    resolve_retries       3
-    timeout retry         1s
-    hold valid            10s
-
+# --- HTTP to HTTPS Redirect ---
+# This frontend binds to port 80 and redirects all traffic to HTTPS
 frontend http_frontend
     bind *:80
     http-request redirect scheme https code 301 if !{ ssl_fc }
 
+# --- HTTPS Input & Routing ---
+# This frontend handles all incoming HTTPS traffic
 frontend https_frontend
     bind *:443 ssl crt /etc/ssl/private/ alpn h2,http/1.1
+    # Set headers for backend services
     http-request set-header X-Forwarded-Proto https
+    # Add HSTS security header for all responses
     http-response set-header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 
+    # --- Routing Rules based on Domain Name from .env file ---
     acl host_client_app hdr(host) -i ${CLIENT_APP_DOMAIN}
     acl host_webapp     hdr(host) -i ${DOMAIN}
     acl host_rabbitmq   hdr(host) -i ${RABBITMQ_DOMAIN}
@@ -35,6 +41,7 @@ frontend https_frontend
     acl host_portainer  hdr(host) -i ${PORTAINER_DOMAIN}
     acl host_redisinsight hdr(host) -i ${REDISINSIGHT_DOMAIN}
 
+    # --- Use backends based on the routing rules ---
     use_backend client_app_backend if host_client_app
     use_backend webapp_backend     if host_webapp
     use_backend rabbitmq_backend   if host_rabbitmq
@@ -42,38 +49,48 @@ frontend https_frontend
     use_backend portainer_backend  if host_portainer
     use_backend redisinsight_backend if host_redisinsight
     
+    # A default backend is good practice
     default_backend client_app_backend
 
+# --- Backend Service Definitions ---
+
+# Backend for the React Client App
 backend client_app_backend
     balance roundrobin
-    server clientapp1 client-app:3000 check resolvers docker_resolver resolve-prefer ipv4
+    server clientapp1 client-app:3000 check
 
+# Backend for the ASP.NET Core Web App
 backend webapp_backend
     balance roundrobin
-    option httpchk GET /health HTTP/1.1\r\nHost:\ localhost
-    server webapp1 webapp:8080 check resolvers docker_resolver resolve-prefer ipv4
+    server webapp1 webapp:8080 check
 
+# Backend for RabbitMQ Management UI
 backend rabbitmq_backend
     balance roundrobin
-    server rabbitmq1 rabbitmq:15672 check resolvers docker_resolver resolve-prefer ipv4
+    server rabbitmq1 rabbitmq:15672 check
 
+# Backend for pgAdmin
 backend pgadmin_backend
     balance roundrobin
-    server pgadmin1 pgadmin:80 check resolvers docker_resolver resolve-prefer ipv4
+    server pgadmin1 pgadmin:80 check
 
+# Backend for Portainer
 backend portainer_backend
     balance roundrobin
-    server portainer1 portainer:9000 check resolvers docker_resolver resolve-prefer ipv4
+    server portainer1 portainer:9000 check
     
+# Backend for RedisInsight - ADD THIS SECTION
 backend redisinsight_backend
     balance roundrobin
-    server redisinsight1 redisinsight:5540 check resolvers docker_resolver resolve-prefer ipv4
+    server redisinsight1 redisinsight:5540 check
 
+# --- HAProxy Statistics Page ---
 listen stats
     bind *:8404
     mode http
     stats enable
     stats uri /stats
     stats realm "HAProxy Statistics"
+    # Uses the password from the .env file
     stats auth admin:${HAPROXY_STATS_PASS}
     stats refresh 10s
