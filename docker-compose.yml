@@ -51,6 +51,12 @@
       - web
     environment:
       - VITE_BASE_API=${VITE_BASE_API}
+    healthcheck:
+      test: ["CMD-SHELL", "(curl -fsS http://localhost:3000/ || wget -q -O - http://localhost:3000/) > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
 
   # 🌐 Main ASP.NET Core Web App
   webapp:
@@ -163,6 +169,12 @@
       - portainer-data:/data
     networks:
       - web
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/api/status || curl -fsS http://localhost:9000/api/status > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     
 
   # 🛠 Background Processor
