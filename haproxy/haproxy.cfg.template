@@ -62,7 +62,9 @@ backend client_app_backend
 # Backend for the ASP.NET Core Web App
 backend webapp_backend
     balance roundrobin
-    server webapp1 webapp:8080 check
+    option httpchk GET /healthz
+    http-check expect status 200
+    server webapp1 webapp:8080 check inter 5s fall 3 rise 2
 
 # Backend for RabbitMQ Management UI
 backend rabbitmq_backend
