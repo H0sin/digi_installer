@@ -287,6 +287,57 @@ Traefik automatically manages SSL certificates through Let's Encrypt. Ensure:
 - Ports 80 and 443 are accessible
 - Email in `ACME_EMAIL` is valid
 
+## 🔀 Using Traefik (alternative to HAProxy)
+
+A Traefik overlay is provided to replace HAProxy while keeping your existing services intact.
+
+### 1) Configure
+- Ensure DNS A/AAAA records point to your server for:
+  - DOMAIN, CLIENT_APP_DOMAIN, RABBITMQ_DOMAIN, PGADMIN_DOMAIN, PORTAINER_DOMAIN, REDISINSIGHT_DOMAIN
+  - Optional dashboard: TRAEFIK_DOMAIN (defaults to traefik.localhost)
+- In `.env`, set:
+  - `TRAEFIK_ACME_EMAIL` (for Let's Encrypt)
+  - `TRAEFIK_DOMAIN` (e.g., traefik.your-domain.com)
+
+### 2) Start with Traefik
+Stop HAProxy if it was previously running, then start the stack with the Traefik overlay:
+
+```bash
+# Stop HAProxy if running
+docker compose stop haproxy
+
+# Start entire stack with Traefik overlay
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+```
+
+Traefik will request certificates via HTTP-01 (port 80 must be open). HTTP is auto-redirected to HTTPS.
+
+### 3) Access URLs
+- App: https://DOMAIN
+- Client: https://CLIENT_APP_DOMAIN
+- RabbitMQ: https://RABBITMQ_DOMAIN
+- pgAdmin: https://PGADMIN_DOMAIN
+- Portainer: https://PORTAINER_DOMAIN
+- RedisInsight: https://REDISINSIGHT_DOMAIN
+- Traefik Dashboard (optional): https://TRAEFIK_DOMAIN
+
+### 4) Secure the dashboard (optional)
+To protect the dashboard with basic auth:
+- Create an htpasswd hash (e.g., with `htpasswd` or an online generator)
+- Add `TRAEFIK_BASIC_AUTH="user:hash"` to `.env`
+- Then add a `traefik-auth` middleware label to the `traefik` router in `docker-compose.traefik.yml`:
+  - `traefik.http.routers.traefik.middlewares=default-security@file,traefik-auth`
+  - `traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_BASIC_AUTH}`
+- Recreate Traefik:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d traefik
+```
+
+### Notes
+- If port 80 is blocked, Let's Encrypt HTTP-01 cannot issue certs; open port 80 or switch to DNS challenge.
+- Traefik attaches to the same `web` network and routes by labels already provided in the overlay.
+
 ## 🛠️ Troubleshooting
 
 ### Common Issues
