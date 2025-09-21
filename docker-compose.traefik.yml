@@ -18,8 +18,12 @@
       - --accesslog=true
       - --certificatesresolvers.le.acme.email=${TRAEFIK_ACME_EMAIL:-admin@example.com}
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      - --certificatesresolvers.le.acme.httpchallenge=true
-      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.le.acme.dnschallenge=true
+      - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
+      # optional: increase propagation timeout if DNS is slow
+      - --certificatesresolvers.le.acme.dnschallenge.delaybeforecheck=10
+      - --certificatesresolvers.le.acme.domains[0].main=${DOMAIN}
+      - --certificatesresolvers.le.acme.domains[0].sans=*.${DOMAIN}
     ports:
       - "80:80"
       - "443:443"
@@ -30,6 +34,9 @@
       - ./certs:/certs:ro
     environment:
       - TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN:-traefik.localhost}
+      # Cloudflare API token for DNS-01 (scopes: Zone.DNS:Edit on your zone)
+      - CF_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     networks:
       - web
     labels:
