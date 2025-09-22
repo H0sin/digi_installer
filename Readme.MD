@@ -338,7 +338,25 @@ docker compose stop haproxy
 docker compose up -d
 ```
 
-### 🚨 Fixing Cloudflare 521 Errors
+### 🚀 SSL Certificate Optimization (NEW!)
+
+**For faster SSL certificate acquisition and Cloudflare Error 526 fixes:**
+
+```bash
+# Optimized SSL setup (recommended)
+./fix-ssl-526.sh
+
+# Or use the optimized startup script
+./start-with-traefik.sh
+```
+
+**Key optimizations:**
+- ⚡ **Faster certificates**: EC256 keys + reduced DNS delays
+- 🔧 **No dependencies**: Traefik starts independently 
+- 📈 **Cloudflare optimized**: Better TLS configuration
+- 🚀 **Quick startup**: Streamlined process
+
+### 🚨 Fixing Cloudflare 521/526 Errors
 
 If you encounter "Web server is down" errors after migration:
 

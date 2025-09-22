@@ -33,19 +33,22 @@ services:
       - --metrics.prometheus=true
       - --metrics.prometheus.addEntryPointsLabels=true
       - --metrics.prometheus.addServicesLabels=true
-      # Let's Encrypt HTTP-01 challenge
+      # Let's Encrypt HTTP-01 challenge (optimized for speed)
       - --certificatesresolvers.httpresolver.acme.email=${TRAEFIK_ACME_EMAIL}
       - --certificatesresolvers.httpresolver.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.httpresolver.acme.httpchallenge.entrypoint=web
+      # Faster certificate acquisition
+      - --certificatesresolvers.httpresolver.acme.keytype=EC256
       # Use Let's Encrypt staging for testing (comment out for production)
       # - --certificatesresolvers.httpresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
-      # Let's Encrypt DNS-01 challenge for wildcard support
+      # Let's Encrypt DNS-01 challenge for wildcard support (optimized)
       - --certificatesresolvers.dnsresolver.acme.email=${TRAEFIK_ACME_EMAIL}
       - --certificatesresolvers.dnsresolver.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.dnsresolver.acme.dnschallenge=true
       - --certificatesresolvers.dnsresolver.acme.dnschallenge.provider=${ACME_DNS_PROVIDER:-cloudflare}
-      - --certificatesresolvers.dnsresolver.acme.dnschallenge.delaybeforecheck=30
+      - --certificatesresolvers.dnsresolver.acme.dnschallenge.delaybeforecheck=10
       - --certificatesresolvers.dnsresolver.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      - --certificatesresolvers.dnsresolver.acme.keytype=EC256
     ports:
       - "80:80"
       - "443:443"
@@ -60,13 +63,8 @@ services:
       - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     networks:
       - digitalbot_web
-    # Remove heavy dependencies - Traefik should start independently
-    # Only depend on basic infrastructure
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+    # Traefik should start independently for faster SSL certificate acquisition
+    # No dependencies needed - this improves startup time and SSL cert speed
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ping || curl -fsS http://localhost:8080/ping > /dev/null || exit 1"]
       interval: 10s
