@@ -87,8 +87,6 @@ services:
       - traefik.http.routers.traefik.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
       - traefik.http.routers.traefik.service=api@internal
       - traefik.http.routers.traefik.middlewares=default-security@file,dashboard-auth@file
-      # Dashboard service uses port 8080
-      - traefik.http.services.traefik.loadbalancer.server.port=8080
   
   # ⚛️ React Client App
   client-app:
@@ -112,7 +110,8 @@ services:
       - traefik.http.routers.client.tls=true
       - traefik.http.routers.client.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
       - traefik.http.routers.client.middlewares=default-security@file,rate-limit@file
-      - traefik.http.services.client.loadbalancer.server.port=3000
+      - traefik.http.routers.client.service=client-svc
+      - traefik.http.services.client-svc.loadbalancer.server.port=3000
 
   # 🌐 Main ASP.NET Core Web App
   webapp:
@@ -175,8 +174,9 @@ services:
       - traefik.http.routers.webapp.tls=true
       - traefik.http.routers.webapp.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
       - traefik.http.routers.webapp.middlewares=default-security@file,rate-limit@file
-      - traefik.http.services.webapp.loadbalancer.server.port=8080
-      - traefik.http.services.webapp.loadbalancer.healthcheck.path=/healthz
+      - traefik.http.routers.webapp.service=webapp-svc
+      - traefik.http.services.webapp-svc.loadbalancer.server.port=8080
+      - traefik.http.services.webapp-svc.loadbalancer.healthcheck.path=/healthz
   
   # 🐰 RabbitMQ Broker with UI
   rabbitmq:
@@ -201,7 +201,8 @@ services:
       - traefik.http.routers.rabbit.tls=true
       - traefik.http.routers.rabbit.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
       - traefik.http.routers.rabbit.middlewares=default-security@file,admin-auth@file
-      - traefik.http.services.rabbit.loadbalancer.server.port=15672
+      - traefik.http.routers.rabbit.service=rabbit-svc
+      - traefik.http.services.rabbit-svc.loadbalancer.server.port=15672
   
   # 🐘 PostgreSQL Database
   postgres:
@@ -251,7 +252,8 @@ services:
       - traefik.http.routers.pgadmin.tls=true
       - traefik.http.routers.pgadmin.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
       - traefik.http.routers.pgadmin.middlewares=default-security@file,admin-auth@file
-      - traefik.http.services.pgadmin.loadbalancer.server.port=80
+      - traefik.http.routers.pgadmin.service=pgadmin-svc
+      - traefik.http.services.pgadmin-svc.loadbalancer.server.port=80
 
   # 📊 Portainer Dashboard
   portainer:
@@ -277,10 +279,8 @@ services:
       - traefik.http.routers.portainer.tls=true
       - traefik.http.routers.portainer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
       - traefik.http.routers.portainer.middlewares=default-security@file
-      - traefik.http.services.portainer.loadbalancer.server.port=9000
-      # SSL certificate optimization for Portainer
-      - traefik.http.services.portainer.loadbalancer.server.scheme=http
-      - traefik.http.routers.portainer.tls.options=default@file
+      - traefik.http.routers.portainer.service=portainer-svc
+      - traefik.http.services.portainer-svc.loadbalancer.server.port=9000
     
 
   # 🛠 Background Processor
@@ -398,7 +398,8 @@ services:
       - traefik.http.routers.redisinsight.tls=true
       - traefik.http.routers.redisinsight.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
       - traefik.http.routers.redisinsight.middlewares=default-security@file,admin-auth@file
-      - traefik.http.services.redisinsight.loadbalancer.server.port=5540
+      - traefik.http.routers.redisinsight.service=redisinsight-svc
+      - traefik.http.services.redisinsight-svc.loadbalancer.server.port=5540
 
 # =============================
 # 🔄 Volumes & Networks
