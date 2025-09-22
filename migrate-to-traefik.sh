@@ -107,6 +107,15 @@ mkdir -p traefik/dynamic
 if [[ ! -f "traefik/dynamic/middlewares.yml" ]]; then
     log_warning "Traefik middlewares configuration not found - ensure it exists"
 fi
+
+# Create external web network for Traefik
+log_info "Creating external web network..."
+if docker network create web 2>/dev/null; then
+    log_success "External web network created"
+else
+    log_info "External web network already exists"
+fi
+
 log_success "Traefik configuration ready"
 
 # Set proper permissions for ACME storage
