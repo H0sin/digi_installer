@@ -12,8 +12,13 @@ mkdir -p /etc/traefik/dynamic
 
 # Copy the template as the dynamic configuration
 echo "📝 Processing dynamic configuration template..."
-# Use envsubst to substitute environment variables
-envsubst < /etc/traefik/dynamic.tmpl.yml > /etc/traefik/dynamic/dynamic.yml
+# Use shell-based substitution instead of envsubst (avoids dependency issues)
+# Read the template file and substitute environment variables
+while IFS= read -r line; do
+    # Process each line for environment variable substitution
+    echo "$line" | sed -e "s/\${TRAEFIK_ADMIN_AUTH}/${TRAEFIK_ADMIN_AUTH:-}/g" \
+                      -e "s/\${TRAEFIK_DASHBOARD_AUTH}/${TRAEFIK_DASHBOARD_AUTH:-}/g"
+done < /etc/traefik/dynamic.tmpl.yml > /etc/traefik/dynamic/dynamic.yml
 
 echo "✅ Dynamic configuration processed successfully"
 
