@@ -21,7 +21,7 @@ services:
       # Providers
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=digitalbot_digitalbot_web
+      - --providers.docker.network=digitalbot_web
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       # Logging
@@ -269,8 +269,11 @@ services:
       - traefik.http.routers.portainer.entrypoints=websecure
       - traefik.http.routers.portainer.tls=true
       - traefik.http.routers.portainer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
-      - traefik.http.routers.portainer.middlewares=default-security@file,admin-auth@file
+      - traefik.http.routers.portainer.middlewares=default-security@file
       - traefik.http.services.portainer.loadbalancer.server.port=9000
+      # SSL certificate optimization for Portainer
+      - traefik.http.services.portainer.loadbalancer.server.scheme=http
+      - traefik.http.routers.portainer.tls.options=default@file
     
 
   # 🛠 Background Processor
@@ -400,7 +403,7 @@ volumes:
 
 networks:
   digitalbot_web:
-    driver: bridge
+    external: true
   digitalbot_internal:
     # This network is not accessible from outside
     internal: true
