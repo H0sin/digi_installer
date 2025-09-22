@@ -37,12 +37,12 @@ fi
 
 log_info "🌐 Setting up Traefik network and configuration..."
 
-# 1. Create web network for services communication
-log_info "Creating web network for services..."
-if docker network create web 2>/dev/null; then
-    log_success "Web network created"
+# 1. Create digitalbot_web network for services communication
+log_info "Creating digitalbot_web network for services..."
+if docker network create digitalbot_web 2>/dev/null; then
+    log_success "digitalbot_web network created"
 else
-    log_info "Web network already exists"
+    log_info "digitalbot_web network already exists"
 fi
 
 # 2. Ensure traefik directory and dynamic config exist

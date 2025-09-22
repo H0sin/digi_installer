@@ -8,13 +8,12 @@ This document explains the fixes applied to resolve Traefik network and middlewa
 **Problem**: Services were referencing a `web` network that wasn't properly configured as external, causing Traefik to randomly select networks.
 
 **Solution**: 
-- Updated `docker-compose.yml` networks section to use external web network:
+- Updated `docker-compose.yml` networks section to use digitalbot networks:
 ```yaml
 networks:
-  web:
-    external: true
-    name: web
-  internal:
+  digitalbot_web:
+    driver: bridge
+  digitalbot_internal:
     internal: true
 ```
 
@@ -68,7 +67,7 @@ dashboard-auth:
 ### Manual Steps
 ```bash
 # 1. Create external network
-docker network create web
+docker network create digitalbot_web
 
 # 2. Start services
 docker compose up -d
@@ -77,7 +76,7 @@ docker compose up -d
 ### Troubleshooting
 ```bash
 # Check network exists
-docker network ls | grep web
+docker network ls | grep digitalbot_web
 
 # Validate configuration
 docker compose config --quiet
@@ -95,7 +94,7 @@ docker compose config --quiet
 
 To verify the fix is working:
 
-1. Check network exists: `docker network ls | grep web`
+1. Check network exists: `docker network ls | grep digitalbot_web`
 2. Validate config: `docker compose config --quiet`
 3. Check middleware syntax: `cat traefik/dynamic/middlewares.yml`
 4. Start services: `docker compose up -d traefik`

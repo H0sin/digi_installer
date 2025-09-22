@@ -44,7 +44,6 @@ tls:
       minVersion: VersionTLS12
       maxVersion: VersionTLS13
       sniStrict: false
-      preferServerCipherSuites: true
       cipherSuites:
         # TLS 1.3 ciphers (preferred)
         - TLS_AES_256_GCM_SHA384
