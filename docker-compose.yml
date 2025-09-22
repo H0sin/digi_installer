@@ -56,19 +56,19 @@
       - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     networks:
       - web
+    # Remove heavy dependencies - Traefik should start independently
+    # Only depend on basic infrastructure
     depends_on:
-      webapp:
+      postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      pgadmin:
-        condition: service_healthy
-      portainer:
-        condition: service_healthy
-      client-app:
-        condition: service_healthy
-      redisinsight:
-        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ping || curl -fsS http://localhost:8080/ping > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - traefik.enable=true
       # Dashboard router
@@ -110,6 +110,13 @@
     image: ${WEBAPP_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-app
     restart: unless-stopped
+    # Add resource limits to prevent crashes
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
@@ -132,6 +139,10 @@
       - TelegramLogger__Topics__Critical=${TELEGRAMLOGGER__TOPICS__CRITICAL}
       - TelegramLogger__Topics__Orders=${TELEGRAMLOGGER__TOPICS__ORDERS}
       - TelegramLogger__Topics__Payments=${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      # Add debugging environment variables
+      - ASPNETCORE_URLS=http://+:8080
+      - DOTNET_USE_POLLING_FILE_WATCHER=1
+      - DOTNET_RUNNING_IN_CONTAINER=true
     networks:
       - web
       - internal

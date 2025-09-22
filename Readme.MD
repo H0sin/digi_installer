@@ -335,6 +335,24 @@ docker compose stop haproxy
 docker compose up -d
 ```
 
+### 🚨 Fixing Cloudflare 521 Errors
+
+If you encounter "Web server is down" errors after migration:
+
+```bash
+# Quick fix for 521 errors
+./fix-521-error.sh
+
+# Comprehensive diagnostics
+./troubleshoot-521.sh
+```
+
+**Common causes and solutions:**
+- **No service on ports 80/443**: Ensure Traefik is running (`docker compose ps traefik`)
+- **Container crashes (Exit 139)**: Check memory limits and architecture compatibility
+- **DNS/SSL issues**: For HTTP-01 challenge, temporarily use "DNS-only" in Cloudflare
+- **Firewall blocking**: Ensure UFW allows ports 80 and 443 (`sudo ufw allow 80,443/tcp`)
+
 ### 🔧 Configuration
 
 Ensure DNS A/AAAA records point to your server for all domains listed in `.env`:
@@ -406,6 +424,35 @@ docker compose up -d
 ## 🛠️ Troubleshooting
 
 ### Common Issues
+
+### Common Issues
+
+<details>
+<summary>🚨 Cloudflare 521 "Web server is down" Error</summary>
+
+**Quick Fix:**
+```bash
+./fix-521-error.sh
+```
+
+**Common causes:**
+- Traefik not running or crashed
+- Ports 80/443 not bound or blocked by firewall
+- Container crashes (especially Exit 139 - segmentation fault)
+- DNS not pointing to server IP
+
+**Troubleshooting steps:**
+1. Check if Traefik is running: `docker compose ps traefik`
+2. Verify ports are listening: `netstat -tulpn | grep -E ":80|:443"`
+3. Check for crashed containers: `docker compose ps -a | grep Exit`
+4. Review Traefik logs: `docker compose logs traefik`
+5. Run comprehensive diagnostics: `./troubleshoot-521.sh`
+
+**For Cloudflare users:**
+- HTTP-01 challenge: Temporarily set DNS to "DNS-only" (gray cloud)
+- Wait for certificate issuance, then re-enable "Proxied" (orange cloud)
+- DNS-01 challenge: Set `TRAEFIK_CERT_RESOLVER=dnsresolver` and configure API token
+</details>
 
 <details>
 <summary>SSL Certificate Issues</summary>

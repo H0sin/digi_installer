@@ -158,11 +158,13 @@ echo
 log_info "Post-migration steps:"
 echo "  1. Test all services to ensure they're working correctly"
 echo "  2. Monitor SSL certificate issuance (may take a few minutes)"
-echo "  3. Consider removing HAProxy-related files if no longer needed:"
+echo "  3. For Cloudflare 521 errors, run: ./fix-521-error.sh"
+echo "  4. Comprehensive diagnostics: ./troubleshoot-521.sh"
+echo "  5. Consider removing HAProxy-related files if no longer needed:"
 echo "     - haproxy/ directory"
 echo "     - entrypoint.sh (HAProxy-specific)"
-echo "  4. Update any external monitoring or scripts that referenced HAProxy"
-echo "  5. Backup can be found in: $BACKUP_DIR"
+echo "  6. Update any external monitoring or scripts that referenced HAProxy"
+echo "  7. Backup can be found in: $BACKUP_DIR"
 echo
 
 # Show useful commands
@@ -171,6 +173,8 @@ echo "  🔍 Check service status:    docker compose ps"
 echo "  📋 View Traefik logs:       docker compose logs -f traefik"
 echo "  🔄 Restart services:        docker compose restart"
 echo "  🛑 Stop all services:       docker compose down"
+echo "  🚨 Fix 521 errors:          ./fix-521-error.sh"
+echo "  🔍 Troubleshoot issues:     ./troubleshoot-521.sh"
 echo "  💾 Backup certificates:     docker cp traefik:/letsencrypt ./letsencrypt-backup"
 echo
 
