@@ -206,10 +206,16 @@ docker build -t your-registry/digital_bot_installer-worker:latest -f Worker/Dock
 - **Ports**: 5672 (AMQP), 15672 (Management)
 - **Features**: Message persistence, management UI
 
-### Reverse Proxy (Traefik)
+### Reverse Proxy & Load Balancer (Traefik)
 - **Version**: v3.0
-- **Ports**: 80, 443, 8080
-- **Features**: Automatic SSL, Load balancing
+- **Ports**: 80 (HTTP), 443 (HTTPS), 8080 (Dashboard)
+- **Features**: 
+  - Automatic SSL with Let's Encrypt (HTTP-01 & DNS-01)
+  - Dynamic service discovery
+  - Load balancing with health checks
+  - Rate limiting and security headers
+  - Prometheus metrics
+  - Hot reload without downtime
 
 ## 📊 Monitoring & Management
 
@@ -287,56 +293,115 @@ Traefik automatically manages SSL certificates through Let's Encrypt. Ensure:
 - Ports 80 and 443 are accessible
 - Email in `ACME_EMAIL` is valid
 
-## 🔀 Using Traefik (alternative to HAProxy)
+## 🚀 Deployment
 
-A Traefik overlay is provided to replace HAProxy while keeping your existing services intact.
+### Quick Start
 
-### 1) Configure
-- Ensure DNS A/AAAA records point to your server for:
-  - DOMAIN, CLIENT_APP_DOMAIN, RABBITMQ_DOMAIN, PGADMIN_DOMAIN, PORTAINER_DOMAIN, REDISINSIGHT_DOMAIN
-  - Optional dashboard: TRAEFIK_DOMAIN (defaults to traefik.localhost)
-- In `.env`, set:
-  - `TRAEFIK_ACME_EMAIL` (for Let's Encrypt)
-  - `TRAEFIK_DOMAIN` (e.g., traefik.your-domain.com)
-
-### 2) Start with Traefik
-Stop HAProxy if it was previously running, then start the stack with the Traefik overlay:
-
+1. **Clone and configure**:
 ```bash
-# Stop HAProxy if running
-docker compose stop haproxy
-
-# Start entire stack with Traefik overlay
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+git clone https://github.com/H0sin/digi_installer.git
+cd digi_installer
+cp .env.example .env  # Edit with your settings
 ```
 
-Traefik will request certificates via HTTP-01 (port 80 must be open). HTTP is auto-redirected to HTTPS.
+2. **Start services**:
+```bash
+# Start entire stack with Traefik (default)
+docker compose up -d
 
-### 3) Access URLs
+# Monitor startup
+docker compose logs -f traefik
+```
+
+3. **Access your services**:
 - App: https://DOMAIN
 - Client: https://CLIENT_APP_DOMAIN
 - RabbitMQ: https://RABBITMQ_DOMAIN
 - pgAdmin: https://PGADMIN_DOMAIN
 - Portainer: https://PORTAINER_DOMAIN
 - RedisInsight: https://REDISINSIGHT_DOMAIN
-- Traefik Dashboard (optional): https://TRAEFIK_DOMAIN
+- Traefik Dashboard: https://TRAEFIK_DOMAIN
 
-### 4) Secure the dashboard (optional)
-To protect the dashboard with basic auth:
-- Create an htpasswd hash (e.g., with `htpasswd` or an online generator)
-- Add `TRAEFIK_BASIC_AUTH="user:hash"` to `.env`
-- Then add a `traefik-auth` middleware label to the `traefik` router in `docker-compose.traefik.yml`:
-  - `traefik.http.routers.traefik.middlewares=default-security@file,traefik-auth`
-  - `traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_BASIC_AUTH}`
-- Recreate Traefik:
+### 🔄 Migrating from HAProxy
+
+If you have an existing HAProxy setup, use the automated migration script:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d traefik
+# Automated migration with backup
+./migrate-to-traefik.sh
+
+# Manual migration (if preferred)
+docker compose stop haproxy
+docker compose up -d
 ```
 
-### Notes
-- If port 80 is blocked, Let's Encrypt HTTP-01 cannot issue certs; open port 80 or switch to DNS challenge.
-- Traefik attaches to the same `web` network and routes by labels already provided in the overlay.
+### 🔧 Configuration
+
+Ensure DNS A/AAAA records point to your server for all domains listed in `.env`:
+- Main domains: `DOMAIN`, `CLIENT_APP_DOMAIN`
+- Admin interfaces: `RABBITMQ_DOMAIN`, `PGADMIN_DOMAIN`, `PORTAINER_DOMAIN`, `REDISINSIGHT_DOMAIN`
+- Optional Traefik dashboard: `TRAEFIK_DOMAIN`
+
+### 🔒 SSL Certificate Management
+
+Traefik automatically manages SSL certificates through Let's Encrypt with two challenge methods:
+
+#### HTTP-01 Challenge (Default)
+- Suitable for most setups
+- Requires ports 80 and 443 to be publicly accessible
+- Issues individual certificates per domain
+
+#### DNS-01 Challenge (For Wildcards)
+- Enables wildcard certificates (`*.yourdomain.com`)
+- Requires DNS provider API access (e.g., Cloudflare)
+- Set `TRAEFIK_CERT_RESOLVER=dnsresolver` and configure `CLOUDFLARE_API_TOKEN`
+
+### 🛡️ Security Features
+
+- **Automatic HTTPS**: HTTP to HTTPS redirect with HSTS headers
+- **Rate Limiting**: Configurable per-service rate limits
+- **Security Headers**: XSS protection, content sniffing prevention, etc.
+- **TLS Hardening**: TLS 1.2+ with secure cipher suites
+- **Optional Basic Auth**: Protect admin interfaces and dashboard
+
+### 📊 Monitoring & Observability
+
+- **Structured Logs**: JSON format for easy parsing
+- **Prometheus Metrics**: Built-in metrics endpoint
+- **Health Checks**: Service health monitoring
+- **Dashboard**: Web UI at `https://TRAEFIK_DOMAIN` (optional)
+
+### 🔧 Adding New Services
+
+To add a new service with automatic SSL and routing:
+
+```yaml
+new-service:
+  image: your-service:latest
+  networks:
+    - web
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.newservice.rule=Host(`new.yourdomain.com`)
+    - traefik.http.routers.newservice.entrypoints=websecure
+    - traefik.http.routers.newservice.tls=true
+    - traefik.http.routers.newservice.tls.certresolver=httpresolver
+    - traefik.http.routers.newservice.middlewares=default-security@file,rate-limit@file
+    - traefik.http.services.newservice.loadbalancer.server.port=8080
+```
+
+### 📈 Scaling Workers
+
+```bash
+# Scale background processors
+docker compose up -d --scale processor=10
+
+# Scale order workers
+docker compose up -d --scale order-worker=5
+
+# Or update replicas in .env and restart
+docker compose up -d
+```
 
 ## 🛠️ Troubleshooting
 
@@ -345,53 +410,92 @@ docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d traefik
 <details>
 <summary>SSL Certificate Issues</summary>
 
-- Check domain DNS settings
-- Verify email in `ACME_EMAIL`
-- Check Traefik logs: `docker-compose logs traefik`
-- Ensure ports 80 and 443 are open
+- Check domain DNS settings point to your server
+- Verify `TRAEFIK_ACME_EMAIL` is valid
+- Check Traefik logs: `docker compose logs traefik`
+- Ensure ports 80 and 443 are open and accessible
+- For DNS-01: Verify DNS provider credentials (e.g., `CLOUDFLARE_API_TOKEN`)
+- Check ACME storage: `docker volume inspect ${COMPOSE_PROJECT_NAME}_traefik-letsencrypt`
+</details>
+
+<details>
+<summary>Service Routing Issues</summary>
+
+- Verify service has `traefik.enable=true` label
+- Check router rules in service labels
+- Ensure service is on the `web` network
+- Check Traefik dashboard for service discovery
+- Verify DNS resolution: `nslookup yourdomain.com`
 </details>
 
 <details>
 <summary>Database Connection Issues</summary>
 
-- Verify `DB_PASSWORD` is correct
-- Check database health: `docker-compose exec db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "password" -Q "SELECT 1"`
+- Verify `POSTGRES_PASSWORD` is correct
+- Check database health: `docker compose exec postgres pg_isready -U ${POSTGRES_USER}`
 - Review connection strings in application logs
+- Ensure services are on the `internal` network
 </details>
 
 <details>
 <summary>RabbitMQ Connection Issues</summary>
 
-- Check RabbitMQ service status: `docker-compose logs rabbitmq`
+- Check RabbitMQ service status: `docker compose logs rabbitmq`
 - Verify credentials in `.env`
+- Test management UI access at `https://${RABBITMQ_DOMAIN}`
 - Check network connectivity between services
+</details>
+
+<details>
+<summary>Traefik Dashboard Access</summary>
+
+- Ensure `TRAEFIK_DOMAIN` DNS points to your server
+- Check dashboard router configuration
+- Verify basic auth credentials if configured
+- Access logs: `docker compose logs traefik | grep dashboard`
 </details>
 
 ### Useful Commands
 
 ```bash
+# Check all services status
+docker compose ps
+
+# View Traefik configuration and routes
+docker compose exec traefik traefik version
+curl -s http://localhost:8080/api/http/routers | jq
+
 # Restart specific service
-docker-compose restart [service-name]
+docker compose restart [service-name]
 
 # View real-time logs
-docker-compose logs -f --tail=100
+docker compose logs -f --tail=100 [service-name]
+
+# SSL certificate debugging
+docker compose exec traefik ls -la /letsencrypt/
+docker compose logs traefik | grep -i acme
 
 # Clean up unused resources
 docker system prune -a
 
-# Backup database
-docker exec digitalbot-db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "password" -Q "BACKUP DATABASE [DigitalBot_DB] TO DISK = N'/var/opt/mssql/backup.bak'"
+# Backup certificates
+docker cp traefik:/letsencrypt ./letsencrypt-backup
+
+# Force certificate renewal (if needed)
+docker compose exec traefik rm /letsencrypt/acme.json
+docker compose restart traefik
 ```
 
 ## 📚 Technology Stack
 
 - **Backend**: ASP.NET Core 9.0, C# 13.0
-- **Database**: Microsoft SQL Server 2022
-- **Message Queue**: RabbitMQ 3.13
-- **Reverse Proxy**: Traefik v3.0
+- **Database**: PostgreSQL 16 (Alpine)
+- **Message Queue**: RabbitMQ 3.13 with Management
+- **Reverse Proxy & Load Balancer**: Traefik v3.0
+- **Caching**: Redis 7 (Alpine)
 - **Containerization**: Docker & Docker Compose
-- **SSL**: Let's Encrypt (automatic)
-- **Monitoring**: Portainer, Adminer
+- **SSL**: Let's Encrypt (automatic via Traefik)
+- **Monitoring**: Portainer, pgAdmin, RedisInsight, Traefik Dashboard
 
 ## 🔒 Security
 

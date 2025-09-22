@@ -2,29 +2,84 @@
   middlewares:
     default-security:
       headers:
-        stsSeconds: 15552000            # 180 days
+        stsSeconds: 31536000            # 1 year HSTS
         stsIncludeSubdomains: true
         stsPreload: true
         forceSTSHeader: true
         frameDeny: true
         contentTypeNosniff: true
         browserXssFilter: true
-        referrerPolicy: no-referrer-when-downgrade
+        referrerPolicy: strict-origin-when-cross-origin
+        permissionsPolicy: geolocation=(), microphone=(), camera=()
         # Hide backend server header
         customResponseHeaders:
           Server: ""
+          X-Powered-By: ""
 
-# TLS hardening options
-# You can reference this as tls.options.default in routers if needed.
+    # Rate limiting for public endpoints
+    rate-limit:
+      rateLimit:
+        average: 100
+        period: 1m
+        burst: 200
+
+    # Stricter rate limiting for admin interfaces
+    admin-rate-limit:
+      rateLimit:
+        average: 20
+        period: 1m
+        burst: 50
+
+    # Basic auth for admin interfaces (optional)
+    admin-auth:
+      basicAuth:
+        removeHeader: true
+        # Users will be defined via environment variables or file
+        # users: # Will be set via TRAEFIK_ADMIN_AUTH env var if needed
+
+    # Dashboard specific auth
+    dashboard-auth:
+      basicAuth:
+        removeHeader: true
+        # Users will be defined via TRAEFIK_DASHBOARD_AUTH env var
+
+    # IP whitelist for internal services (customize as needed)
+    internal-only:
+      ipWhiteList:
+        sourceRange:
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+          - "127.0.0.1/32"
+
+# Enhanced TLS configuration
 tls:
   options:
     default:
       minVersion: VersionTLS12
+      maxVersion: VersionTLS13
       sniStrict: false
       preferServerCipherSuites: true
       cipherSuites:
-        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        # TLS 1.3 ciphers (preferred)
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+        - TLS_AES_128_GCM_SHA256
+        # TLS 1.2 ciphers (backward compatibility)
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
         - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
         - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+      curvePreferences:
+        - X25519
+        - secp384r1
+        - secp256r1
+
+    # Strict TLS for admin interfaces
+    secure:
+      minVersion: VersionTLS13
+      sniStrict: true
+      cipherSuites:
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
 
