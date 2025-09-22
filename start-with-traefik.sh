@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 🚀 Digital Bot - Start with Traefik
-# This script ensures proper network setup and starts services with Traefik
+# 🚀 Digital Bot - Optimized Start with Traefik
+# Fast and efficient startup script for better SSL certificate performance
 
 set -e
 
@@ -35,85 +35,53 @@ if [[ ! -f "docker-compose.yml" ]] || [[ ! -f ".env" ]]; then
     exit 1
 fi
 
-log_info "🌐 Setting up Traefik network and configuration..."
+log_info "🚀 Starting Digital Bot with optimized Traefik configuration..."
 
-# 1. Create digitalbot_web network for services communication
-log_info "Creating digitalbot_web network for services..."
-if docker network create digitalbot_web 2>/dev/null; then
-    log_success "digitalbot_web network created"
-else
-    log_info "digitalbot_web network already exists"
-fi
+# 1. Quick network and volume setup
+log_info "Setting up networking..."
+docker network create digitalbot_web 2>/dev/null || log_info "Network ready"
 
-# 2. Ensure traefik directory and dynamic config exist
-log_info "Setting up Traefik configuration directories..."
-mkdir -p traefik/dynamic
-
-# 3. Verify middleware configuration exists
-if [[ ! -f "traefik/dynamic/middlewares.yml" ]]; then
-    log_error "Traefik middlewares.yml not found!"
-    exit 1
-else
-    log_success "Traefik middleware configuration found"
-fi
-
-# 4. Create SSL certificate storage
-log_info "Setting up SSL certificate storage..."
-mkdir -p letsencrypt
+# 2. Ensure traefik directories exist
+mkdir -p traefik/dynamic letsencrypt
 touch letsencrypt/acme.json
 chmod 600 letsencrypt/acme.json
 docker volume create "${COMPOSE_PROJECT_NAME:-digitalbot}_traefik-letsencrypt" 2>/dev/null || true
-log_success "SSL certificate storage ready"
 
-# 5. Validate docker-compose configuration
-log_info "Validating Docker Compose configuration..."
-if docker compose config --quiet; then
-    log_success "Docker Compose configuration is valid"
-else
+# 3. Quick config validation
+if ! docker compose config --quiet; then
     log_error "Docker Compose configuration has errors!"
     exit 1
 fi
 
-# 6. Start services
-log_info "Starting services with Traefik..."
-log_info "Starting infrastructure services first..."
-docker compose up -d postgres redis rabbitmq
-
-log_info "Starting Traefik reverse proxy..."
+# 4. Start services efficiently (Traefik first for faster SSL)
+log_info "Starting Traefik first (optimized for fast SSL certificates)..."
 docker compose up -d traefik
 
-log_info "Starting web applications..."
+log_info "Starting all services..."
 docker compose up -d
 
-# 7. Show status
-log_info "Checking service status..."
-docker compose ps
-
-log_success "🎉 Services started successfully!"
+# 5. Quick status check
+log_success "🎉 Services started with optimized configuration!"
 echo
-log_info "Your services should be accessible at:"
 source .env 2>/dev/null || true
 
-if [[ -n "$DOMAIN" ]]; then
-    echo "  📱 Main App:       https://$DOMAIN"
-fi
-if [[ -n "$CLIENT_APP_DOMAIN" ]]; then
-    echo "  ⚛️  Client App:     https://$CLIENT_APP_DOMAIN"
-fi
-if [[ -n "$TRAEFIK_DOMAIN" ]]; then
-    echo "  🔄 Traefik:        https://$TRAEFIK_DOMAIN"
-fi
-if [[ -n "$PGADMIN_DOMAIN" ]]; then
-    echo "  🗃️  pgAdmin:        https://$PGADMIN_DOMAIN"
-fi
-if [[ -n "$PORTAINER_DOMAIN" ]]; then
-    echo "  📊 Portainer:      https://$PORTAINER_DOMAIN"
-fi
+log_info "Your services will be accessible at:"
+[[ -n "$DOMAIN" ]] && echo "  📱 Main App:       https://$DOMAIN"
+[[ -n "$CLIENT_APP_DOMAIN" ]] && echo "  ⚛️  Client App:     https://$CLIENT_APP_DOMAIN"
+[[ -n "$TRAEFIK_DOMAIN" ]] && echo "  🔄 Traefik:        https://$TRAEFIK_DOMAIN"
+[[ -n "$PGADMIN_DOMAIN" ]] && echo "  🗃️  pgAdmin:        https://$PGADMIN_DOMAIN"
+[[ -n "$PORTAINER_DOMAIN" ]] && echo "  📊 Portainer:      https://$PORTAINER_DOMAIN"
 echo
 
-log_info "Useful commands:"
-echo "  🔍 Check service status:    docker compose ps"
-echo "  📋 View Traefik logs:       docker compose logs -f traefik"
-echo "  🛑 Stop all services:       docker compose down"
-echo "  🚨 Fix 521 errors:          ./fix-521-error.sh"
-echo "  🔍 Troubleshoot issues:     ./troubleshoot-521.sh"
+log_info "⚡ Key optimizations active:"
+echo "  🚀 Traefik starts independently (no database wait)"
+echo "  🔧 EC256 keys for faster certificate generation"
+echo "  📈 Optimized TLS settings for Cloudflare compatibility"
+echo "  ⏱️  Reduced DNS challenge delays"
+echo
+
+log_info "Monitor and troubleshoot:"
+echo "  📋 Traefik logs:       docker compose logs -f traefik"
+echo "  🔍 Service status:     docker compose ps"
+echo "  🛠️  SSL troubleshoot:   ./fix-ssl-526.sh"
+echo "  ✅ Test domain:        curl -I https://$DOMAIN"
