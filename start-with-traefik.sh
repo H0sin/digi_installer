@@ -37,12 +37,12 @@ fi
 
 log_info "🌐 Setting up Traefik network and configuration..."
 
-# 1. Create external web network
-log_info "Creating external web network..."
+# 1. Create web network for services communication
+log_info "Creating web network for services..."
 if docker network create web 2>/dev/null; then
-    log_success "External web network created"
+    log_success "Web network created"
 else
-    log_info "External web network already exists"
+    log_info "Web network already exists"
 fi
 
 # 2. Ensure traefik directory and dynamic config exist

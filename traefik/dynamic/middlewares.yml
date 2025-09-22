@@ -23,13 +23,6 @@ http:
         period: 1m
         burst: 200
 
-    # Stricter rate limiting for admin interfaces
-    admin-rate-limit:
-      rateLimit:
-        average: 20
-        period: 1m
-        burst: 50
-
     # Basic auth for admin interfaces (optional)
     admin-auth:
       basicAuth:
@@ -43,15 +36,6 @@ http:
         removeHeader: true
         users:
           - "ali:$apr1$0M3AZz6/$LExNx/0/r7N8pKuELfqNS1"
-
-    # IP whitelist for internal services (customize as needed)
-    internal-only:
-      ipWhiteList:
-        sourceRange:
-          - "10.0.0.0/8"
-          - "172.16.0.0/12"
-          - "192.168.0.0/16"
-          - "127.0.0.1/32"
 
 # Enhanced TLS configuration
 tls:
@@ -75,12 +59,4 @@ tls:
         - X25519
         - secp384r1
         - secp256r1
-
-    # Strict TLS for admin interfaces
-    secure:
-      minVersion: VersionTLS13
-      sniStrict: true
-      cipherSuites:
-        - TLS_AES_256_GCM_SHA384
-        - TLS_CHACHA20_POLY1305_SHA256
 
