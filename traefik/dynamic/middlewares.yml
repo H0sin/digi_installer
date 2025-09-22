@@ -1,4 +1,4 @@
-﻿http:
+http:
   middlewares:
     default-security:
       headers:
