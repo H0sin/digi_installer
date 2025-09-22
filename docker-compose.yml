@@ -1,25 +1,59 @@
 ﻿services:
-  # 🚪 Reverse Proxy (HAProxy)
-  haproxy:
-    image: haproxy:2.8
-    container_name: haproxy
+  # 🌐 Reverse Proxy & Load Balancer (Traefik)
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
     restart: unless-stopped
-    user: root
-    environment:
-      - DOMAIN=${DOMAIN}
-      - RABBITMQ_DOMAIN=${RABBITMQ_DOMAIN}
-      - PGADMIN_DOMAIN=${PGADMIN_DOMAIN}
-      - PORTAINER_DOMAIN=${PORTAINER_DOMAIN}
-      - HAPROXY_STATS_PASS=${HAPROXY_STATS_PASS}
-      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
-      - REDISINSIGHT_DOMAIN=${REDISINSIGHT_DOMAIN}
+    command:
+      # API and Dashboard
+      - --api.dashboard=true
+      - --api.insecure=false
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.traefik.address=:8080
+      # Global HTTP to HTTPS redirect
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      # Providers
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=web
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      # Logging
+      - --log.level=INFO
+      - --log.format=json
+      - --accesslog=true
+      - --accesslog.format=json
+      # Metrics
+      - --metrics.prometheus=true
+      - --metrics.prometheus.addEntryPointsLabels=true
+      - --metrics.prometheus.addServicesLabels=true
+      # Let's Encrypt HTTP-01 challenge
+      - --certificatesresolvers.httpresolver.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.httpresolver.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.httpresolver.acme.httpchallenge.entrypoint=web
+      # Let's Encrypt DNS-01 challenge for wildcard support
+      - --certificatesresolvers.dnsresolver.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.dnsresolver.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.dnsresolver.acme.dnschallenge=true
+      - --certificatesresolvers.dnsresolver.acme.dnschallenge.provider=${ACME_DNS_PROVIDER:-cloudflare}
+      - --certificatesresolvers.dnsresolver.acme.dnschallenge.delaybeforecheck=30
+      - --certificatesresolvers.dnsresolver.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
     ports:
       - "80:80"
       - "443:443"
-      - "8404:8404"
+      - "8080:8080"  # Dashboard port
     volumes:
-      - ./haproxy/haproxy.cfg.template:/usr/local/etc/haproxy/haproxy.cfg.template:ro
-      - ${CERTS_PATH}:/etc/ssl/private:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-letsencrypt:/letsencrypt
+    environment:
+      # DNS provider credentials for wildcard certs
+      - CF_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     networks:
       - web
     depends_on:
@@ -35,12 +69,17 @@
         condition: service_healthy
       redisinsight:
         condition: service_started
-    command: >
-      /bin/sh -c "
-        apt-get update && apt-get install -y gettext-base &&
-        envsubst < /usr/local/etc/haproxy/haproxy.cfg.template > /tmp/haproxy.cfg && 
-        haproxy -f /tmp/haproxy.cfg -db
-      "
+    labels:
+      - traefik.enable=true
+      # Dashboard router
+      - traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DOMAIN:-traefik.localhost}`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.tls=true
+      - traefik.http.routers.traefik.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
+      - traefik.http.routers.traefik.service=api@internal
+      - traefik.http.routers.traefik.middlewares=default-security@file,dashboard-auth@file
+      # Dashboard service uses port 8080
+      - traefik.http.services.traefik.loadbalancer.server.port=8080
   
   # ⚛️ React Client App
   client-app:
@@ -57,6 +96,14 @@
       timeout: 5s
       retries: 6
       start_period: 40s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.client.rule=Host(`${CLIENT_APP_DOMAIN}`)
+      - traefik.http.routers.client.entrypoints=websecure
+      - traefik.http.routers.client.tls=true
+      - traefik.http.routers.client.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
+      - traefik.http.routers.client.middlewares=default-security@file,rate-limit@file
+      - traefik.http.services.client.loadbalancer.server.port=3000
 
   # 🌐 Main ASP.NET Core Web App
   webapp:
@@ -101,6 +148,15 @@
       timeout: 5s
       retries: 6
       start_period: 60s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.webapp.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.webapp.entrypoints=websecure
+      - traefik.http.routers.webapp.tls=true
+      - traefik.http.routers.webapp.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
+      - traefik.http.routers.webapp.middlewares=default-security@file,rate-limit@file
+      - traefik.http.services.webapp.loadbalancer.server.port=8080
+      - traefik.http.services.webapp.loadbalancer.healthcheck.path=/healthz
   
   # 🐰 RabbitMQ Broker with UI
   rabbitmq:
@@ -118,6 +174,14 @@
       interval: 30s
       timeout: 10s
       retries: 5
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.rabbit.rule=Host(`${RABBITMQ_DOMAIN}`)
+      - traefik.http.routers.rabbit.entrypoints=websecure
+      - traefik.http.routers.rabbit.tls=true
+      - traefik.http.routers.rabbit.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
+      - traefik.http.routers.rabbit.middlewares=default-security@file,admin-auth@file
+      - traefik.http.services.rabbit.loadbalancer.server.port=15672
   
   # 🐘 PostgreSQL Database
   postgres:
@@ -160,6 +224,14 @@
       timeout: 10s
       retries: 6
       start_period: 60s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pgadmin.rule=Host(`${PGADMIN_DOMAIN}`)
+      - traefik.http.routers.pgadmin.entrypoints=websecure
+      - traefik.http.routers.pgadmin.tls=true
+      - traefik.http.routers.pgadmin.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
+      - traefik.http.routers.pgadmin.middlewares=default-security@file,admin-auth@file
+      - traefik.http.services.pgadmin.loadbalancer.server.port=80
 
   # 📊 Portainer Dashboard
   portainer:
@@ -178,6 +250,14 @@
       timeout: 5s
       retries: 10
       start_period: 40s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.portainer.rule=Host(`${PORTAINER_DOMAIN}`)
+      - traefik.http.routers.portainer.entrypoints=websecure
+      - traefik.http.routers.portainer.tls=true
+      - traefik.http.routers.portainer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
+      - traefik.http.routers.portainer.middlewares=default-security@file,admin-auth@file
+      - traefik.http.services.portainer.loadbalancer.server.port=9000
     
 
   # 🛠 Background Processor
@@ -288,6 +368,14 @@
       - web
     depends_on:
       - redis
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.redisinsight.rule=Host(`${REDISINSIGHT_DOMAIN}`)
+      - traefik.http.routers.redisinsight.entrypoints=websecure
+      - traefik.http.routers.redisinsight.tls=true
+      - traefik.http.routers.redisinsight.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-httpresolver}
+      - traefik.http.routers.redisinsight.middlewares=default-security@file,admin-auth@file
+      - traefik.http.services.redisinsight.loadbalancer.server.port=5540
 
 # =============================
 # 🔄 Volumes & Networks
@@ -295,6 +383,7 @@
 volumes:
   postgres-data:
   portainer-data:
+  traefik-letsencrypt:
 
 networks:
   web:
