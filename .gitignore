@@ -8,9 +8,6 @@ backup_*/
 data/
 ssl/
 
-# Legacy files
-legacy/
-
 # SSL/TLS certificates and keys
 letsencrypt/
 certs/*.pem
