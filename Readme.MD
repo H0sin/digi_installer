@@ -1,53 +1,132 @@
-# 🤖 Digital Bot
+# 🚀 Digi Installer
 
-[![.NET](https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
-[![ASP.NET Core](https://img.shields.io/badge/ASP.NET%20Core-9.0-512BD4?logo=dotnet)](https://asp.net/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docker.com/)
-[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-3.13-FF6600?logo=rabbitmq)](https://rabbitmq.com/)
-[![SQL Server](https://img.shields.io/badge/SQL%20Server-2022-CC2927?logo=microsoft-sql-server)](https://www.microsoft.com/sql-server)
-[![Traefik](https://img.shields.io/badge/Traefik-v3.0-24A1C1?logo=traefik)](https://traefik.io/)
+Simple and fast installer for Digi service.
 
-A comprehensive ASP.NET Core web application with microservices architecture, featuring message queuing, database management, and containerized deployment with automatic SSL certificates.
+## 📋 Requirements
 
-## 🌟 Features
+- Linux server (Ubuntu 20.04+ recommended)
+- Docker and Docker Compose
+- Domain name pointing to your server
+- Root or sudo access
 
-- **Microservices Architecture**: Scalable and maintainable service-oriented design
-- **Message Queue Processing**: RabbitMQ integration for reliable message handling
-- **Automatic SSL**: Let's Encrypt integration via Traefik
-- **Database Management**: SQL Server with Adminer interface
-- **Container Orchestration**: Docker Compose for easy deployment
-- **Monitoring**: Portainer for container management
-- **Worker Scaling**: Configurable worker replicas
-- **Health Checks**: Built-in health monitoring
+## ⚡ Quick Install
 
-## 🏗️ Architecture
+```bash
+# Download installer
+git clone https://github.com/H0sin/digi_installer.git
+cd digi_installer
 
-```mermaid
-graph TB
-    subgraph "External Access"
-        U[Users] --> T[Traefik Reverse Proxy]
-        A[Admin] --> T
-    end
+# Run installation
+./install.sh
+```
 
-    subgraph "Application Layer"
-        T --> W[Web Application]
-        T --> AD[Adminer]
-        T --> P[Portainer]
-    end
+## 🔧 Manual Installation
 
-    subgraph "Processing Layer"
-        W --> R[RabbitMQ]
-        R --> WK[Worker Services]
-    end
+1. **Clone repository**
+   ```bash
+   git clone https://github.com/H0sin/digi_installer.git
+   cd digi_installer
+   ```
 
-    subgraph "Data Layer"
-        W --> DB[SQL Server]
-        WK --> DB
-        AD --> DB
-    end
+2. **Configure environment**
+   ```bash
+   cp .env.example .env
+   nano .env  # Edit your settings
+   ```
 
-    subgraph "Management"
-        P --> D[Docker Engine]
+3. **Start services**
+   ```bash
+   docker compose up -d
+   ```
+
+## ⚙️ Configuration
+
+Edit `.env` file with your settings:
+
+```env
+# Your domain
+DOMAIN=yourdomain.com
+
+# Database settings
+DB_PASSWORD=your_secure_password
+
+# Redis password
+REDIS_PASSWORD=your_redis_password
+
+# Secret key (generate random string)
+SECRET_KEY=your_secret_key
+```
+
+## 📊 Management
+
+### Check Status
+```bash
+docker compose ps
+```
+
+### View Logs
+```bash
+docker compose logs -f
+```
+
+### Restart Services
+```bash
+docker compose restart
+```
+
+### Stop Services
+```bash
+docker compose down
+```
+
+### Update Digi
+```bash
+docker compose pull
+docker compose up -d
+```
+
+## 🗂️ File Structure
+
+```
+digi_installer/
+├── install.sh              # Main installation script
+├── docker-compose.yml      # Docker services
+├── .env.example            # Environment template
+├── nginx/                  # Nginx configuration
+│   └── default.conf
+└── data/                   # Persistent data
+    ├── postgres/
+    └── redis/
+```
+
+## 🛠️ Troubleshooting
+
+### Check if services are running
+```bash
+docker compose ps
+```
+
+### View application logs
+```bash
+docker compose logs digi-app
+```
+
+### Reset everything
+```bash
+docker compose down -v
+./install.sh
+```
+
+## 🔒 Security
+
+- Change default passwords in `.env`
+- Use strong passwords
+- Keep your system updated
+- Configure firewall properly
+
+## 📞 Support
+
+For issues and support, please visit the [GitHub repository](https://github.com/H0sin/digi_installer).
     end
 ```
 
