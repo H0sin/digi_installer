@@ -1,4 +1,4 @@
-﻿http:
+http:
   middlewares:
     default-security:
       headers:
@@ -34,14 +34,15 @@
     admin-auth:
       basicAuth:
         removeHeader: true
-        # Users will be defined via environment variables or file
-        # users: # Will be set via TRAEFIK_ADMIN_AUTH env var if needed
+        users:
+          - "admin:$apr1$4J4OgWyf$gOlvvNwFAK3IPSkW7eK7h."
 
     # Dashboard specific auth
     dashboard-auth:
       basicAuth:
         removeHeader: true
-        # Users will be defined via TRAEFIK_DASHBOARD_AUTH env var
+        users:
+          - "ali:$apr1$0M3AZz6/$LExNx/0/r7N8pKuELfqNS1"
 
     # IP whitelist for internal services (customize as needed)
     internal-only:
