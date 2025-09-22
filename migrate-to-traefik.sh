@@ -47,9 +47,6 @@ log_info "Creating backup of current configuration..."
 mkdir -p "$BACKUP_DIR"
 cp "$COMPOSE_FILE" "$BACKUP_DIR/"
 cp "$ENV_FILE" "$BACKUP_DIR/"
-if [[ -d "haproxy" ]]; then
-    cp -r "haproxy" "$BACKUP_DIR/"
-fi
 log_success "Backup created in $BACKUP_DIR"
 
 # Check if HAProxy is currently running
@@ -108,12 +105,12 @@ if [[ ! -f "traefik/dynamic/middlewares.yml" ]]; then
     log_warning "Traefik middlewares configuration not found - ensure it exists"
 fi
 
-# Create external web network for Traefik
-log_info "Creating external web network..."
+# Create web network for services communication
+log_info "Creating web network for services..."
 if docker network create web 2>/dev/null; then
-    log_success "External web network created"
+    log_success "Web network created"
 else
-    log_info "External web network already exists"
+    log_info "Web network already exists"
 fi
 
 log_success "Traefik configuration ready"
@@ -169,11 +166,8 @@ echo "  1. Test all services to ensure they're working correctly"
 echo "  2. Monitor SSL certificate issuance (may take a few minutes)"
 echo "  3. For Cloudflare 521 errors, run: ./fix-521-error.sh"
 echo "  4. Comprehensive diagnostics: ./troubleshoot-521.sh"
-echo "  5. Consider removing HAProxy-related files if no longer needed:"
-echo "     - haproxy/ directory"
-echo "     - entrypoint.sh (HAProxy-specific)"
-echo "  6. Update any external monitoring or scripts that referenced HAProxy"
-echo "  7. Backup can be found in: $BACKUP_DIR"
+echo "  5. Update any external monitoring or scripts that referenced HAProxy"
+echo "  6. Backup can be found in: $BACKUP_DIR"
 echo
 
 # Show useful commands

@@ -398,8 +398,7 @@ volumes:
 
 networks:
   web:
-    external: true
-    name: web
+    driver: bridge
   internal:
     # This network is not accessible from outside
     internal: true

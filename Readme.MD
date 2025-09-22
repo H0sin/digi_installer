@@ -141,19 +141,21 @@ RABBITMQ_PASS=your-rabbitmq-password
 
 ```
 digital_bot_installer/
-├── Api/                        # Web API project
-├── Application/               # Application layer
-├── Contracts/                 # Shared contracts
-├── Data/                      # Data access layer
-├── Domain/                    # Domain models
-├── Worker/                    # Background worker service
-├── .github/                   # GitHub Actions workflows
-├── docker-compose.yml         # Docker services configuration
-├── docker-compose.override.yml # Development overrides
+├── traefik/                    # Traefik reverse proxy configuration
+│   └── dynamic/               # Dynamic configuration files
+│       ├── middlewares.yml    # Security and rate limiting
+│       └── services.yml       # Custom service definitions
+├── certs/                     # SSL certificate storage
+├── docker-compose.yml         # Main Docker services configuration
 ├── .env                       # Environment variables
-├── .dockerignore             # Docker ignore rules
+├── .env.example              # Environment template
+├── start-with-traefik.sh     # Main startup script
+├── migrate-to-traefik.sh     # HAProxy to Traefik migration
+├── fix-521-error.sh          # Cloudflare 521 error fixes
+├── troubleshoot-521.sh       # Comprehensive diagnostics
+├── TRAEFIK-ADVANCED.md       # Advanced Traefik configuration
+├── TRAEFIK-FIX-NETWORK-MIDDLEWARE.md # Network troubleshooting
 ├── .gitignore                # Git ignore rules
-├── DigitalBot.sln            # Solution file
 └── README.md                 # This file
 ```
 

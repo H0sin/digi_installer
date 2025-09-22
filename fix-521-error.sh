@@ -66,12 +66,12 @@ if [[ ! -f "traefik/dynamic/middlewares.yml" ]]; then
     log_warning "Traefik middlewares.yml not found - this may cause issues"
 fi
 
-# 4.1. Create external web network for Traefik
-log_info "Creating external web network..."
+# 4.1. Create web network for services communication
+log_info "Creating web network for services..."
 if docker network create web 2>/dev/null; then
-    log_success "External web network created"
+    log_success "Web network created"
 else
-    log_info "External web network already exists"
+    log_info "Web network already exists"
 fi
 
 # 5. Create SSL certificate storage
