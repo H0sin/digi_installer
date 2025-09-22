@@ -1,0 +1,109 @@
+# Traefik Dynamic Configuration Template
+# This template contains all dynamic configurations for Traefik
+
+http:
+  middlewares:
+    # Default security middleware
+    default-security:
+      headers:
+        stsSeconds: 31536000            # 1 year HSTS
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: strict-origin-when-cross-origin
+        permissionsPolicy: geolocation=(), microphone=(), camera=()
+        # Hide backend server header
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+
+    # Rate limiting for public endpoints
+    rate-limit:
+      rateLimit:
+        average: 100
+        period: 1m
+        burst: 200
+
+    # Basic auth for admin interfaces (replace with your own hash)
+    admin-auth:
+      basicAuth:
+        removeHeader: true
+        users:
+          - "admin:$2y$10$example.hash.here"
+
+    # Dashboard specific auth (replace with your own hash)
+    dashboard-auth:
+      basicAuth:
+        removeHeader: true
+        users:
+          - "admin:$2y$10$example.hash.here"
+
+    # Cloudflare-optimized security headers
+    cloudflare-security:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+          X-Frame-Options: "DENY"
+          X-Content-Type-Options: "nosniff"
+          CF-IPCountry: ""
+          CF-Ray: ""
+
+  # Example services (can be customized)
+  services:
+    # External service example
+    external-api:
+      loadBalancer:
+        servers:
+          - url: "https://api.example.com"
+        healthCheck:
+          path: "/health"
+          interval: "30s"
+          timeout: "3s"
+
+# TLS configuration optimized for Cloudflare compatibility and speed
+tls:
+  options:
+    # Default TLS configuration with Cloudflare compatibility
+    default:
+      minVersion: VersionTLS12
+      maxVersion: VersionTLS13
+      sniStrict: false
+      # Optimized cipher suites for Cloudflare compatibility and performance
+      cipherSuites:
+        # TLS 1.3 (modern, fastest)
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+        - TLS_AES_128_GCM_SHA256
+        # TLS 1.2 (for compatibility, most common with Cloudflare)
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+      curvePreferences:
+        - X25519
+        - secp384r1
+        - secp256r1
+      # Optimized for faster handshakes
+      alpnProtocols:
+        - h2
+        - http/1.1
+
+    # Alternative TLS option for Cloudflare compatibility
+    cloudflare:
+      minVersion: VersionTLS12
+      maxVersion: VersionTLS13
+      sniStrict: false

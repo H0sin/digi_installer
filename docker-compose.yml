@@ -1,7 +1,9 @@
 services:
   # 🌐 Reverse Proxy & Load Balancer (Traefik)
   traefik:
-    image: traefik:v3.0
+    build:
+      context: ./traefik
+      dockerfile: Dockerfile
     container_name: traefik
     restart: unless-stopped
     command:
@@ -55,12 +57,17 @@ services:
       - "8080:8080"  # Dashboard port
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/dynamic:/etc/traefik/dynamic:ro
       - traefik-letsencrypt:/letsencrypt
     environment:
       # DNS provider credentials for wildcard certs
       - CF_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
       - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      # Environment variables for template processing
+      - TRAEFIK_ACME_EMAIL=${TRAEFIK_ACME_EMAIL}
+      - TRAEFIK_ADMIN_AUTH=${TRAEFIK_ADMIN_AUTH}
+      - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}
+      - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-cloudflare}
+      - EXTERNAL_API_URL=${EXTERNAL_API_URL}
     networks:
       - digitalbot_web
     # Traefik should start independently for faster SSL certificate acquisition
