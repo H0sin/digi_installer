@@ -27,19 +27,19 @@ http:
         period: 1m
         burst: 200
 
-    # Basic auth for admin interfaces (replace with your own hash)
+    # Basic auth for admin interfaces 
     admin-auth:
       basicAuth:
         removeHeader: true
         users:
-          - "admin:$2y$10$example.hash.here"
+          - "${TRAEFIK_ADMIN_AUTH}"
 
-    # Dashboard specific auth (replace with your own hash)
+    # Dashboard specific auth
     dashboard-auth:
       basicAuth:
         removeHeader: true
         users:
-          - "admin:$2y$10$example.hash.here"
+          - "${TRAEFIK_DASHBOARD_AUTH}"
 
     # Cloudflare-optimized security headers
     cloudflare-security:
@@ -59,18 +59,6 @@ http:
           X-Content-Type-Options: "nosniff"
           CF-IPCountry: ""
           CF-Ray: ""
-
-  # Example services (can be customized)
-  services:
-    # External service example
-    external-api:
-      loadBalancer:
-        servers:
-          - url: "https://api.example.com"
-        healthCheck:
-          path: "/health"
-          interval: "30s"
-          timeout: "3s"
 
 # TLS configuration optimized for Cloudflare compatibility and speed
 tls:
