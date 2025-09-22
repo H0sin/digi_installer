@@ -1,0 +1,65 @@
+# TLS configuration specifically for Cloudflare compatibility
+# This file addresses SSL validation issues (Error 526)
+
+tls:
+  options:
+    # Default TLS configuration with Cloudflare compatibility
+    default:
+      minVersion: VersionTLS12
+      maxVersion: VersionTLS13
+      sniStrict: false
+      # Cipher suites that work well with Cloudflare
+      cipherSuites:
+        # TLS 1.3 (modern)
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+        - TLS_AES_128_GCM_SHA256
+        # TLS 1.2 (for compatibility)
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+      curvePreferences:
+        - X25519
+        - secp384r1
+        - secp256r1
+
+# HTTP configuration for proper certificate validation
+http:
+  middlewares:
+    # CORS and security headers for API endpoints
+    api-cors:
+      headers:
+        accessControlAllowOriginList: 
+          - "*"
+        accessControlAllowMethods:
+          - "GET"
+          - "POST"
+          - "PUT"
+          - "DELETE"
+          - "OPTIONS"
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+        accessControlMaxAge: 100
+        addVaryHeader: true
+
+    # Security headers optimized for Cloudflare
+    cloudflare-security:
+      headers:
+        # HSTS
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        # Content security
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        # Hide server info
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+          X-Frame-Options: "DENY"
+          X-Content-Type-Options: "nosniff"

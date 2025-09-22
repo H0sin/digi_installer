@@ -201,5 +201,10 @@ echo "   - Set TRAEFIK_CERT_RESOLVER=dnsresolver in .env"
 echo "   - Ensure CLOUDFLARE_API_TOKEN is properly set"
 echo "   - Verify API token has Zone:DNS:Edit permissions"
 echo
+echo "7. 🛠️ For Cloudflare Error 526 (SSL handshake failed):"
+echo "   - Run: ./fix-ssl-526.sh"
+echo "   - Check Cloudflare SSL/TLS mode: should be 'Full' or 'Full (strict)'"
+echo "   - Monitor certificate issuance: docker compose logs traefik | grep -i acme"
+echo
 
 log_success "Diagnostic complete! Check the output above for issues."
