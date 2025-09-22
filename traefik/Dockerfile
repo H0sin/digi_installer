@@ -1,7 +1,7 @@
 FROM traefik:v3.0
 
-# Install gettext-base package for envsubst command
-RUN apk add --no-cache gettext-base
+# Remove the need for additional packages - using shell built-ins
+# RUN apk add --no-cache gettext-tiny
 
 # Copy template and entrypoint script
 COPY dynamic.tmpl.yml /etc/traefik/dynamic.tmpl.yml
