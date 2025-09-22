@@ -152,6 +152,7 @@ digital_bot_installer/
 ├── start-with-traefik.sh     # Main startup script
 ├── migrate-to-traefik.sh     # HAProxy to Traefik migration
 ├── fix-521-error.sh          # Cloudflare 521 error fixes
+├── fix-ssl-526.sh            # SSL certificate and TLS fixes
 ├── troubleshoot-521.sh       # Comprehensive diagnostics
 ├── TRAEFIK-ADVANCED.md       # Advanced Traefik configuration
 ├── TRAEFIK-FIX-NETWORK-MIDDLEWARE.md # Network troubleshooting
@@ -459,12 +460,30 @@ docker compose up -d
 <details>
 <summary>SSL Certificate Issues</summary>
 
+**Common SSL/TLS issues:**
+- Error 526: SSL handshake failed (Cloudflare)
+- Invalid certificate errors
+- Mixed content warnings
+- Connection timeouts on HTTPS
+
+**Quick fixes:**
+1. **For Cloudflare Error 526**: Run `./fix-ssl-526.sh`
+2. **Check Traefik health**: Verify ping endpoint responds: `curl http://localhost:8080/ping`
+3. **Monitor certificate issuance**: `docker compose logs traefik | grep -i acme`
+
+**Troubleshooting steps:**
 - Check domain DNS settings point to your server
-- Verify `TRAEFIK_ACME_EMAIL` is valid
-- Check Traefik logs: `docker compose logs traefik`
+- Verify `TRAEFIK_ACME_EMAIL` is valid and reachable
 - Ensure ports 80 and 443 are open and accessible
 - For DNS-01: Verify DNS provider credentials (e.g., `CLOUDFLARE_API_TOKEN`)
 - Check ACME storage: `docker volume inspect ${COMPOSE_PROJECT_NAME}_traefik-letsencrypt`
+- Verify TLS configuration: `docker compose logs traefik | grep -i tls`
+
+**For Cloudflare users:**
+- Set SSL/TLS mode to "Full" or "Full (strict)" in Cloudflare dashboard
+- Temporarily disable proxy (gray cloud) during initial certificate issuance
+- Ensure cipher suites are compatible (TLS 1.2+ required)
+- Use `./fix-ssl-526.sh` script for comprehensive SSL troubleshooting
 </details>
 
 <details>
