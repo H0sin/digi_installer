@@ -8,6 +8,8 @@ services:
       # API and Dashboard
       - --api.dashboard=true
       - --api.insecure=false
+      # Enable ping endpoint for health checks
+      - --ping=true
       # Entrypoints
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
@@ -19,7 +21,7 @@ services:
       # Providers
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=digitalbot_web
+      - --providers.docker.network=digitalbot_digitalbot_web
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       # Logging
@@ -35,6 +37,8 @@ services:
       - --certificatesresolvers.httpresolver.acme.email=${TRAEFIK_ACME_EMAIL}
       - --certificatesresolvers.httpresolver.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.httpresolver.acme.httpchallenge.entrypoint=web
+      # Use Let's Encrypt staging for testing (comment out for production)
+      # - --certificatesresolvers.httpresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
       # Let's Encrypt DNS-01 challenge for wildcard support
       - --certificatesresolvers.dnsresolver.acme.email=${TRAEFIK_ACME_EMAIL}
       - --certificatesresolvers.dnsresolver.acme.storage=/letsencrypt/acme.json
