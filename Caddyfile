@@ -1,0 +1,23 @@
+be-unavailable.com {
+  reverse_proxy webapp:8080
+}
+
+client.be-unavailable.com {
+  reverse_proxy client-app:80
+}
+
+pgadmin.be-unavailable.com {
+  reverse_proxy pgadmin:80
+}
+
+portainer.be-unavailable.com {
+  reverse_proxy portainer:9000
+}
+
+rabbitmq.be-unavailable.com {
+  reverse_proxy rabbitmq:15672
+}
+
+redis.be-unavailable.com {
+  reverse_proxy redisinsight:8001
+}
