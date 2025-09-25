@@ -143,6 +143,7 @@ services:
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - digitalbot_internal
+      - digitalbot_web
     depends_on:
       postgres:
         condition: service_healthy
@@ -175,6 +176,7 @@ services:
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - digitalbot_internal
+      - digitalbot_web
     depends_on:
       postgres:
         condition: service_healthy
@@ -207,6 +209,7 @@ services:
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - digitalbot_internal
+      - digitalbot_web
     depends_on:
       postgres:
         condition: service_healthy
