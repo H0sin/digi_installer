@@ -20,6 +20,7 @@ services:
       - pgadmin
       - rabbitmq
       - redisinsight
+      - portainer
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -148,7 +149,7 @@ services:
       redis:
         condition: service_healthy
         
-  worker:
+  worker:    
     image: ${ORDER_WORKER_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-order-worker
     restart: unless-stopped
@@ -180,7 +181,7 @@ services:
         condition: service_healthy
              
   jobs:
-    image: ${ORDER_WORKER_IMAGE}
+    image: ${JOBS_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-jobs
     restart: unless-stopped
     environment:
