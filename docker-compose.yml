@@ -1,68 +1,33 @@
-version: '3.8'
-
 services:
-  # ==========================================================
-  # 🌐 Security Guard (Traefik)
-  # ==========================================================
-  traefik:
-    image: traefik:v2.11 # Using a specific version is better practice
-    container_name: traefik
+  caddy:
+    image: caddy:2
+    container_name: caddy
     restart: unless-stopped
-    command:
-      - "--api.dashboard=true"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--certificatesresolvers.dnsresolver.acme.email=${TRAEFIK_ACME_EMAIL}"
-      - "--certificatesresolvers.dnsresolver.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.dnsresolver.acme.dnschallenge.provider=cloudflare"
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-letsencrypt:/letsencrypt
     environment:
-      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - ACME_EMAIL=${TRAEFIK_ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
     networks:
       - digitalbot_web
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DOMAIN}`)"
-      - "traefik.http.routers.traefik.entrypoints=websecure"
-      - "traefik.http.routers.traefik.tls=true"
-      - "traefik.http.routers.traefik.tls.certresolver=dnsresolver"
-      - "traefik.http.routers.traefik.service=api@internal"
-      # Define and apply the dashboard authentication middleware
-      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
-      - "traefik.http.routers.traefik.middlewares=dashboard-auth@docker"
+    depends_on:
+      - webapp
+      - client-app
+      - pgadmin
+      - rabbitmq
+      - redisinsight
 
-  # ==========================================================
-  # ⚛️ React Client App
-  # ==========================================================
   client-app:
     image: ${CLIENT_APP_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-client-app
     restart: unless-stopped
     networks:
       - digitalbot_web
-    environment:
-      - VITE_BASE_API=${VITE_BASE_API}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.client.rule=Host(`${CLIENT_APP_DOMAIN}`)"
-      - "traefik.http.routers.client.entrypoints=websecure"
-      - "traefik.http.routers.client.tls=true"
-      - "traefik.http.routers.client.tls.certresolver=dnsresolver"
-      - "traefik.http.routers.client.service=client-svc"
-      - "traefik.http.services.client-svc.loadbalancer.server.port=3000"
 
-  # ==========================================================
-  # 🌐 Main ASP.NET Core Web App
-  # ==========================================================
   webapp:
     image: ${WEBAPP_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-app
@@ -75,21 +40,11 @@ services:
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
       - Redis__Host=redis
       - Redis__Password=${REDIS_PASSWORD}
+      - DOMAIN=${DOMAIN}
     networks:
       - digitalbot_web
       - digitalbot_internal
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.webapp.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.webapp.entrypoints=websecure"
-      - "traefik.http.routers.webapp.tls=true"
-      - "traefik.http.routers.webapp.tls.certresolver=dnsresolver"
-      - "traefik.http.routers.webapp.service=webapp-svc"
-      - "traefik.http.services.webapp-svc.loadbalancer.server.port=8080" # Assuming ASP.NET runs on 8080
 
-  # ==========================================================
-  # 🐰 RabbitMQ Broker with UI
-  # ==========================================================
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -100,19 +55,12 @@ services:
     networks:
       - digitalbot_internal
       - digitalbot_web
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.rabbitmq.rule=Host(`${RABBITMQ_DOMAIN}`)"
-      - "traefik.http.routers.rabbitmq.entrypoints=websecure"
-      - "traefik.http.routers.rabbitmq.tls=true"
-      - "traefik.http.routers.rabbitmq.tls.certresolver=dnsresolver"
-      - "traefik.http.routers.rabbitmq.service=rabbitmq-svc"
-      - "traefik.http.services.rabbitmq-svc.loadbalancer.server.port=15672"
-      - "traefik.http.routers.rabbitmq.middlewares=dashboard-auth@docker"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
-  # ==========================================================
-  # 🐘 PostgreSQL Database
-  # ==========================================================
   postgres:
     image: postgres:16-alpine
     container_name: postgres
@@ -125,10 +73,12 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - digitalbot_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
-  # ==========================================================
-  # 🧑‍💻 pgAdmin for DB Management
-  # ==========================================================
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
@@ -139,20 +89,9 @@ services:
     networks:
       - digitalbot_web
       - digitalbot_internal
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.pgadmin.rule=Host(`${PGADMIN_DOMAIN}`)"
-      - "traefik.http.routers.pgadmin.entrypoints=websecure"
-      - "traefik.http.routers.pgadmin.tls=true"
-      - "traefik.http.routers.pgadmin.tls.certresolver=dnsresolver"
-      - "traefik.http.routers.pgadmin.service=pgadmin-svc"
-      - "traefik.http.services.pgadmin-svc.loadbalancer.server.port=80"
 
-  # ==========================================================
-  # 🛠 Background Processor
-  # ==========================================================
   processor:
-    image: ${PROCESSER_IMAGE}
+    image: ${PROCESSOR_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-processor
     restart: unless-stopped
     environment:
@@ -166,18 +105,16 @@ services:
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
       - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
       - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT}
-      - TelegramLogger__Topics__Information=${TELEGRAMLOGGER__TOPICS__INFORMATION}
-      - TelegramLogger__Topics__Warning=${TELEGRAMLOGGER__TOPICS__WARNING}
-      - TelegramLogger__Topics__Error=${TELEGRAMLOGGER__TOPICS__ERROR}
-      - TelegramLogger__Topics__Critical=${TELEGRAMLOGGER__TOPICS__CRITICAL}
-      - TelegramLogger__Topics__Orders=${TELEGRAMLOGGER__TOPICS__ORDERS}
-      - TelegramLogger__Topics__Payments=${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - digitalbot_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  # ==========================================================
-  # 🚀 Redis for Caching
-  # ==========================================================
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -185,10 +122,12 @@ services:
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     networks:
       - digitalbot_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  # ==========================================================
-  # 📈 RedisInsight for Redis UI
-  # ==========================================================
   redisinsight:
     image: redis/redisinsight:latest
     container_name: redisinsight
@@ -196,48 +135,15 @@ services:
     networks:
       - digitalbot_web
       - digitalbot_internal
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.redisinsight.rule=Host(`${REDISINSIGHT_DOMAIN}`)"
-      - "traefik.http.routers.redisinsight.entrypoints=websecure"
-      - "traefik.http.routers.redisinsight.tls=true"
-      - "traefik.http.routers.redisinsight.tls.certresolver=dnsresolver"
-      - "traefik.http.routers.redisinsight.service=redisinsight-svc"
-      - "traefik.http.services.redisinsight-svc.loadbalancer.server.port=8001"
-      - "traefik.http.routers.redisinsight.middlewares=dashboard-auth@docker"
-
-  # ==========================================================
-  # 📊 Portainer Dashboard (ADDED)
-  # ==========================================================
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
-    command: -H unix:///var/run/docker.sock
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer-data:/data
-    networks:
-      - digitalbot_web
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`${PORTAINER_DOMAIN}`)"
-      - "traefik.http.routers.portainer.entrypoints=websecure"
-      - "traefik.http.routers.portainer.tls=true"
-      - "traefik.http.routers.portainer.tls.certresolver=dnsresolver"
-      - "traefik.http.routers.portainer.service=portainer-svc"
-      - "traefik.http.services.portainer-svc.loadbalancer.server.port=9000"
-      - "traefik.http.routers.portainer.middlewares=dashboard-auth@docker"
+    # اگر latest هست و روی 8001 گوش نداد، پورت جدید معمولاً 5540 است.
 
 volumes:
   postgres-data:
-  traefik-letsencrypt:
-  portainer-data: # Added volume for portainer
+  caddy-data:
+  caddy-config:
 
 networks:
-  digitalbot_web:
-    driver: bridge
+  digitalbot_web: {}
   digitalbot_internal:
     driver: bridge
     internal: true
-
