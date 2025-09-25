@@ -46,6 +46,7 @@ services:
     restart: unless-stopped
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
       - ASPNETCORE_ENVIRONMENT=Production
       - RabbitMq__HOST=rabbitmq
       - RabbitMq__Username=${RABBITMQ_USER}
@@ -125,6 +126,7 @@ services:
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
+      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
       - RabbitMq__HOST=rabbitmq
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
@@ -158,6 +160,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - RabbitMq__HOST=rabbitmq
       - RabbitMq__Username=${RABBITMQ_USER}
+      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
       - Redis__Host=redis
       - Redis__Password=${REDIS_PASSWORD}
@@ -187,6 +190,7 @@ services:
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
+      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
       - RabbitMq__HOST=rabbitmq
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
