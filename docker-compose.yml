@@ -234,9 +234,13 @@ services:
 
 volumes:
   postgres-data:
+    name: postgres_data
   caddy-data:
+    name: caddy_data
   caddy-config:
-
+    name: caddy_config
+  portainer-data:
+    name: portainer_data
 networks:
   digitalbot_web: {}
   digitalbot_internal:
