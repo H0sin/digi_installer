@@ -21,6 +21,17 @@ services:
       - rabbitmq
       - redisinsight
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks:
+      - digitalbot_web
+
   client-app:
     image: ${CLIENT_APP_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-client-app
@@ -41,9 +52,25 @@ services:
       - Redis__Host=redis
       - Redis__Password=${REDIS_PASSWORD}
       - DOMAIN=${DOMAIN}
+      - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
+      - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
+      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT},
+      - TelegramLogger__Topics__Information= ${TELEGRAMLOGGER__TOPICS__INFORMATION},
+      - TelegramLogger__Topics__Warning= ${TELEGRAMLOGGER__TOPICS__WARNING},
+      - TelegramLogger__Topics__Error= ${TELEGRAMLOGGER__TOPICS__ERROR},
+      - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
+      - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
+      - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - digitalbot_web
       - digitalbot_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -104,7 +131,75 @@ services:
       - Redis__Password=${REDIS_PASSWORD}
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
       - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
-      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT}
+      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT},
+      - TelegramLogger__Topics__Information= ${TELEGRAMLOGGER__TOPICS__INFORMATION},
+      - TelegramLogger__Topics__Warning= ${TELEGRAMLOGGER__TOPICS__WARNING},
+      - TelegramLogger__Topics__Error= ${TELEGRAMLOGGER__TOPICS__ERROR},
+      - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
+      - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
+      - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+    networks:
+      - digitalbot_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+        
+  worker:
+    image: ${ORDER_WORKER_IMAGE}
+    container_name: ${COMPOSE_PROJECT_NAME}-order-worker
+    restart: unless-stopped
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - ASPNETCORE_ENVIRONMENT=Production
+      - RabbitMq__HOST=rabbitmq
+      - RabbitMq__Username=${RABBITMQ_USER}
+      - RabbitMq__Password=${RABBITMQ_PASSWORD}
+      - Redis__Host=redis
+      - Redis__Password=${REDIS_PASSWORD}
+      - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
+      - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
+      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT},
+      - TelegramLogger__Topics__Information= ${TELEGRAMLOGGER__TOPICS__INFORMATION},
+      - TelegramLogger__Topics__Warning= ${TELEGRAMLOGGER__TOPICS__WARNING},
+      - TelegramLogger__Topics__Error= ${TELEGRAMLOGGER__TOPICS__ERROR},
+      - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
+      - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
+      - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+    networks:
+      - digitalbot_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+             
+  jobs:
+    image: ${ORDER_WORKER_IMAGE}
+    container_name: ${COMPOSE_PROJECT_NAME}-jobs
+    restart: unless-stopped
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - ASPNETCORE_ENVIRONMENT=Production
+      - RabbitMq__HOST=rabbitmq
+      - RabbitMq__Username=${RABBITMQ_USER}
+      - RabbitMq__Password=${RABBITMQ_PASSWORD}
+      - Redis__Host=redis
+      - Redis__Password=${REDIS_PASSWORD}
+      - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
+      - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
+      - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT},
+      - TelegramLogger__Topics__Information= ${TELEGRAMLOGGER__TOPICS__INFORMATION},
+      - TelegramLogger__Topics__Warning= ${TELEGRAMLOGGER__TOPICS__WARNING},
+      - TelegramLogger__Topics__Error= ${TELEGRAMLOGGER__TOPICS__ERROR},
+      - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
+      - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
+      - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - digitalbot_internal
     depends_on:
@@ -135,7 +230,6 @@ services:
     networks:
       - digitalbot_web
       - digitalbot_internal
-    # اگر latest هست و روی 8001 گوش نداد، پورت جدید معمولاً 5540 است.
 
 volumes:
   postgres-data:
