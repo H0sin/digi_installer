@@ -106,7 +106,6 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
-    networks:
       - digitalbot_web
       - digitalbot_internal
     healthcheck:
