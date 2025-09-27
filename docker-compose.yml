@@ -15,7 +15,6 @@ services:
       - caddy-config:/config
     networks:
       - digitalbot_web
-      - digitalbot_internal
     depends_on:
       - webapp
       - client-app
@@ -68,7 +67,7 @@ services:
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
     networks:
       - digitalbot_web
-      - digitalbot_internal
+      
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +100,8 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
