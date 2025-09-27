@@ -22,6 +22,6 @@ redis.be-unavailable.com {
   reverse_proxy redisinsight:8001
 }
 
-tls://db.be-unavailable.com:443 {
+db.be-unavailable.com:5432 {
     reverse_proxy postgres:5432
 }
