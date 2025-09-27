@@ -6,6 +6,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "5432:5432"  # <-- این خط را اضافه کن
     environment:
       - ACME_EMAIL=${TRAEFIK_ACME_EMAIL}
     volumes:
@@ -21,6 +22,7 @@ services:
       - rabbitmq
       - redisinsight
       - portainer
+
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -102,6 +104,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - digitalbot_internal
+      - digitalbot_web  # <-- این خط را اضافه کن
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
