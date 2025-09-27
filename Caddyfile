@@ -21,8 +21,7 @@ rabbitmq.be-unavailable.com {
 redis.be-unavailable.com {
   reverse_proxy redisinsight:8001
 }
+
 db.be-unavailable.com {
-
     reverse_proxy postgres:5432
-
 }
