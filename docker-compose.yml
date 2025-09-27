@@ -15,6 +15,7 @@ services:
       - caddy-config:/config
     networks:
       - digitalbot_web
+      - digitalbot_internal
     depends_on:
       - webapp
       - client-app
@@ -104,7 +105,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - digitalbot_internal
-      - digitalbot_web
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
