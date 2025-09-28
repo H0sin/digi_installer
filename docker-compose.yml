@@ -138,6 +138,7 @@ services:
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
       - Redis__Host=redis
       - Redis__Password=${REDIS_PASSWORD}
+      - DOMAIN=${DOMAIN}
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
       - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
       - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT},
@@ -169,6 +170,7 @@ services:
       - RabbitMq__Username=${RABBITMQ_USER}
       - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
+      - DOMAIN=${DOMAIN}
       - Redis__Host=redis
       - Redis__Password=${REDIS_PASSWORD}
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
@@ -204,6 +206,7 @@ services:
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
       - Redis__Host=redis
       - Redis__Password=${REDIS_PASSWORD}
+      - DOMAIN=${DOMAIN}
       - TelegramLogger__BotToken=${TELEGRAMLOGGER__BOTTOKEN}
       - TelegramLogger__ChatId=${TELEGRAMLOGGER__CHATID}
       - TelegramLogger__Topics__Default=${TELEGRAMLOGGER__TOPICS__DEFAULT},
