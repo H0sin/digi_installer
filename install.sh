@@ -18,6 +18,8 @@ info(){ echo -e "${BLUE}[INFO]${NC} $*"; }
 ok(){ echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn(){ echo -e "${YELLOW}[WARN]${NC} $*"; }
 err(){ echo -e "${RED}[ERROR]${NC} $*"; }
+# Strong password generator
+gen_pw(){ LC_ALL=C tr -dc 'A-Za-z0-9!@#%^_+=' </dev/urandom | head -c ${1:-24}; echo; }
 
 # ---------------- Workdir handling ----------------
 DEFAULT_WORKDIR="/opt/digitalbot"
@@ -112,32 +114,53 @@ collect_config(){
   read -p "Client subdomain [client]: " CLIENT_SUB; CLIENT_SUB=${CLIENT_SUB:-client}
   CLIENT_APP_DOMAIN="$CLIENT_SUB.$DOMAIN"
 
-  # Service credentials
-  hdr "Credentials"
-  read -p "Postgres user [postgres]: " POSTGRES_USER; POSTGRES_USER=${POSTGRES_USER:-postgres}
-  read -s -p "Postgres password: " POSTGRES_PASSWORD; echo; [[ -z "$POSTGRES_PASSWORD" ]] && { err "Postgres password required"; exit 1; }
-  read -p "Postgres DB [digitalbot_db]: " POSTGRES_DB; POSTGRES_DB=${POSTGRES_DB:-digitalbot_db}
-
-  read -p "RabbitMQ user [rabbit]: " RABBITMQ_USER; RABBITMQ_USER=${RABBITMQ_USER:-rabbit}
-  read -s -p "RabbitMQ password: " RABBITMQ_PASSWORD; echo; [[ -z "$RABBITMQ_PASSWORD" ]] && { err "RabbitMQ password required"; exit 1; }
-
-  read -s -p "Redis password: " REDIS_PASSWORD; echo; [[ -z "$REDIS_PASSWORD" ]] && { err "Redis password required"; exit 1; }
-
-  # Multi-node (external data services)
-  hdr "Data Services Location"
-  read -p "Use EXTERNAL Postgres/Rabbit/Redis hosts? (y/N): " USE_EXT; USE_EXT=${USE_EXT:-N}
-  if [[ "$USE_EXT" =~ ^[yY]$ ]]; then
+  # Data placement
+  hdr "Data Services on THIS node?"
+  read -p "Install Postgres/RabbitMQ/Redis locally on THIS server? (Y/n): " LOC; LOC=${LOC:-Y}
+  if [[ "$LOC" =~ ^[Yy]$ ]]; then
+    RUN_LOCAL_DATA="y"
+    POSTGRES_HOST="postgres"; RABBITMQ_HOST="rabbitmq"; REDIS_HOST="redis"
+  else
+    RUN_LOCAL_DATA="n"
     read -p "POSTGRES_HOST [postgres]: " POSTGRES_HOST; POSTGRES_HOST=${POSTGRES_HOST:-postgres}
     read -p "RABBITMQ_HOST [rabbitmq]: " RABBITMQ_HOST; RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
     read -p "REDIS_HOST [redis]: " REDIS_HOST; REDIS_HOST=${REDIS_HOST:-redis}
-    RUN_LOCAL_DATA="false"
-  else
-    POSTGRES_HOST="postgres"; RABBITMQ_HOST="rabbitmq"; REDIS_HOST="redis"; RUN_LOCAL_DATA="true"
   fi
 
-  # Images — built from REGISTRY_URL (if set) or ask explicitly
+  # Credentials with auto-strong defaults
+  hdr "Credentials"
+  read -p "Postgres user [postgres]: " POSTGRES_USER; POSTGRES_USER=${POSTGRES_USER:-postgres}
+  local PG_PW_DEF="$(gen_pw 24)"
+  read -s -p "Postgres password [auto:${PG_PW_DEF}]: " POSTGRES_PASSWORD; echo
+  POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-$PG_PW_DEF}
+  read -p "Postgres DB [digitalbot_db]: " POSTGRES_DB; POSTGRES_DB=${POSTGRES_DB:-digitalbot_db}
+
+  read -p "RabbitMQ user [rabbit]: " RABBITMQ_USER; RABBITMQ_USER=${RABBITMQ_USER:-rabbit}
+  local RB_PW_DEF="$(gen_pw 20)"
+  read -s -p "RabbitMQ password [auto:${RB_PW_DEF}]: " RABBITMQ_PASSWORD; echo
+  RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-$RB_PW_DEF}
+
+  local RD_PW_DEF="$(gen_pw 20)"
+  read -s -p "Redis password [auto:${RD_PW_DEF}]: " REDIS_PASSWORD; echo
+  REDIS_PASSWORD=${REDIS_PASSWORD:-$RD_PW_DEF}
+
+  # Registry login (optional)
+  hdr "Docker Registry (optional)"
+  read -p "Use a PRIVATE registry? (y/N): " USE_REG; USE_REG=${USE_REG:-N}
+  if [[ "$USE_REG" =~ ^[yY]$ ]]; then
+    read -p "Registry URL (e.g. registry.example.com) [docker.io]: " REGISTRY_URL; REGISTRY_URL=${REGISTRY_URL:-docker.io}
+    read -p "Registry username: " REG_USER
+    read -s -p "Registry password: " REG_PASS; echo
+    echo "$REG_PASS" | docker login "$REGISTRY_URL" -u "$REG_USER" --password-stdin
+    ok "Logged in to $REGISTRY_URL"
+    REG_PREFIX="$REGISTRY_URL/"
+    [[ "$REGISTRY_URL" == "docker.io" ]] && REG_PREFIX=""
+  else
+    REG_PREFIX=""
+  fi
+
+  # Images (don’t mix with DOMAIN)
   hdr "Images"
-  local REG_PREFIX=""; [[ -n "${REGISTRY_URL:-}" && "$REGISTRY_URL" != "docker.io" ]] && REG_PREFIX="$REGISTRY_URL/"
   read -p "Webapp image [${REG_PREFIX}digital-web:latest]: " WEBAPP_IMAGE; WEBAPP_IMAGE=${WEBAPP_IMAGE:-${REG_PREFIX}digital-web:latest}
   read -p "Client image [${REG_PREFIX}digital-client:latest]: " CLIENT_APP_IMAGE; CLIENT_APP_IMAGE=${CLIENT_APP_IMAGE:-${REG_PREFIX}digital-client:latest}
   read -p "Processor image [${REG_PREFIX}digital-processer:latest]: " PROCESSOR_IMAGE; PROCESSOR_IMAGE=${PROCESSOR_IMAGE:-${REG_PREFIX}digital-processer:latest}
@@ -148,17 +171,13 @@ collect_config(){
   hdr "Edge / Caddy"
   read -p "Enable Caddy on THIS node? (y/N): " ENABLE_CADDY; ENABLE_CADDY=${ENABLE_CADDY:-N}
 
-  # Sizing
-  hdr "Sizing / Autoscale"
-  echo "Provide real numbers if you have them; otherwise press Enter to accept safe defaults."
-  read -p "Total users (approx) [100000]: " U; U=${U:-100000}
-  read -p "Active % (simultaneous peak) [10]: " A; A=${A:-10}
-  read -p "Backend peak RPS after cache [300]: " RPS; RPS=${RPS:-300}
-  read -p "Avg cluster CPU per request (millicores) [8]: " MC; MC=${MC:-8}
-  # simple heuristic
-  local ACTIVE=$(( U * A / 100 ))
-  local need_mc=$(( RPS * MC ))
-  local web_repl=$(( (need_mc + 800) / 800 ))  # 800m ≈ 0.8 vCPU target per pod
+  # Sizing with a SINGLE number
+  hdr "Sizing / Autoscale (based on active users)"
+  read -p "Active users at peak (concurrent) [10000]: " ACTIVE; ACTIVE=${ACTIVE:-10000}
+  read -p "Avg requests per active user per minute [6]: " RPM_PER_USER; RPM_PER_USER=${RPM_PER_USER:-6}
+  local RPS=$(( ACTIVE * RPM_PER_USER / 60 ))
+  local need_mc=$(( RPS * 8 ))           # 8m per request (tunable)
+  local web_repl=$(( (need_mc + 800) / 800 ))
   [[ $web_repl -lt 2 ]] && web_repl=2
   local proc_repl=$(( (ACTIVE/2000) + 1 ))
   local worker_repl=$(( (ACTIVE/3000) + 1 ))
@@ -191,7 +210,7 @@ RABBITMQ_USER=${RABBITMQ_USER}
 RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
 REDIS_PASSWORD=${REDIS_PASSWORD}
 
-# Hosts (support multi-node)
+# Hosts (multi-node)
 POSTGRES_HOST=${POSTGRES_HOST}
 RABBITMQ_HOST=${RABBITMQ_HOST}
 REDIS_HOST=${REDIS_HOST}
@@ -207,6 +226,7 @@ ORDER_WORKER_REPLICAS=${ORDER_WORKER_REPLICAS}
 EOF
   chmod 600 "$ENV_FILE"; ok ".env ready → $ENV_FILE"
 }
+
 
 # ---------------- Compose generator ----------------
 generate_compose(){
@@ -225,13 +245,6 @@ services:
       - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
-    depends_on:
-      postgres:
-        condition: service_started
-      rabbitmq:
-        condition: service_started
-      redis:
-        condition: service_started
     deploy:
       replicas: ${WEBAPP_REPLICAS}
       resources:
@@ -257,10 +270,6 @@ services:
       - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
-    depends_on:
-      postgres: { condition: service_started }
-      rabbitmq: { condition: service_started }
-      redis: { condition: service_started }
     deploy:
       replicas: ${PROCESSER_REPLICAS}
       resources:
@@ -278,14 +287,8 @@ services:
       - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
-    depends_on:
-      postgres: { condition: service_started }
-      rabbitmq: { condition: service_started }
-      redis: { condition: service_started }
     deploy:
       replicas: ${ORDER_WORKER_REPLICAS}
-      resources:
-        limits: { cpus: "0.8", memory: "768M" }
     networks: [ digitalbot_internal ]
 
   jobs:
@@ -299,13 +302,9 @@ services:
       - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
-    depends_on:
-      postgres: { condition: service_started }
-      rabbitmq: { condition: service_started }
-      redis: { condition: service_started }
     networks: [ digitalbot_internal ]
 
-  # Data services (only when RUN_LOCAL_DATA=true)
+  # Data services only when profile 'data' is enabled
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -321,8 +320,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
-    deploy:
-      replicas: ${RUN_LOCAL_DATA} == 'true' ? 1 : 0
+    profiles: ["data"]
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -336,8 +334,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-    deploy:
-      replicas: ${RUN_LOCAL_DATA} == 'true' ? 1 : 0
+    profiles: ["data"]
 
   redis:
     image: redis:7-alpine
@@ -349,8 +346,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    deploy:
-      replicas: ${RUN_LOCAL_DATA} == 'true' ? 1 : 0
+    profiles: ["data"]
 
   caddy:
     image: caddy:2
@@ -381,6 +377,7 @@ networks:
 EOF
   ok "docker-compose.yml → $COMPOSE_FILE"
 }
+
 
 # ---------------- Caddyfile ----------------
 write_caddy(){
@@ -452,11 +449,14 @@ configure_backup(){
 compose_cmd(){
   local profiles=()
   if [[ -f "$ENV_FILE" ]]; then
-    local en="$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2 || true)"
-    if [[ "$en" =~ ^[yY]$ ]]; then profiles+=("--profile" "caddy"); fi
+    local en_caddy="$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2 || true)"
+    local run_data="$(grep -E '^RUN_LOCAL_DATA=' "$ENV_FILE" | cut -d= -f2 || true)"
+    [[ "$en_caddy" =~ ^[yY]$ ]] && profiles+=( --profile caddy )
+    [[ "$run_data" =~ ^[yY]$ ]] && profiles+=( --profile data )
   fi
   docker compose -f "$COMPOSE_FILE" "${profiles[@]}" "$@"
 }
+
 
 # ---------------- Actions ----------------
 do_install(){
