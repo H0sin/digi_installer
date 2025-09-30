@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
+# re-exec with bash if not running in bash (برای مواقعی که کسی اشتباهی با sh اجرا کند)
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
 # Digital Bot Infra — Production‑grade Installer / Updater / Scaler / Backup
 # Version: 2.0.0 (EN‑only)
 # Goals:
@@ -10,7 +16,7 @@
 #  - Non-interactive flags for CI/CD (GitHub Actions)
 #  - Resource limits per service (CPUs / memory / ulimits)
 
-set -euo pipefail
+
 
 # ===== Colors & helpers =====
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'; BOLD='\033[1m'
