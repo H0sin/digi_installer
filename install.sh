@@ -13,6 +13,7 @@ set -euo pipefail
 #############################################
 # fixed RPM per active user (keep simple for scale)
 RPM_PER_USER_DEFAULT=6
+ROLE=""   # one of: all, edge-app, data, edge, app
 
 calc_replicas_from_active() {
   local ACTIVE="$1"
@@ -138,7 +139,7 @@ backup_existing(){
   local last_dir=""
   local last_env="" last_comp="" last_caddy=""
 
-  # آخرین بکاپ را پیدا کن
+  # Find the latest backup directory
   last_dir="$(ls -1dt "$SCRIPT_DIR"/backup_* 2>/dev/null | head -n1 || true)"
   if [[ -n "$last_dir" && -d "$last_dir" ]]; then
     [[ -f "$last_dir/.env" ]]               && last_env="$last_dir/.env"
@@ -146,12 +147,12 @@ backup_existing(){
     [[ -f "$last_dir/Caddyfile" ]]          && last_caddy="$last_dir/Caddyfile"
   fi
 
-  # اگر هیچ فایل فعلی‌ای وجود ندارد، بکاپ نگیر
+  # If no current files exist, skip backup
   if [[ ! -f "$ENV_FILE" && ! -f "$COMPOSE_FILE" && ! -f "$CADDY_FILE" ]]; then
     return 0
   fi
 
-  # تصمیم بگیر آیا نسبت به آخرین بکاپ تغییر داریم یا نه
+  # Determine whether there are changes compared to the latest backup
   if [[ -f "$ENV_FILE" ]]; then
     if [[ ! -f "$last_env" ]] || ! cmp -s "$ENV_FILE" "$last_env"; then need_backup=1; fi
   fi
@@ -171,7 +172,7 @@ backup_existing(){
     [[ -f "$CADDY_FILE" ]]   && cp "$CADDY_FILE"   "$BACKUP_DIR/Caddyfile"
     ok "Backed up to $BACKUP_DIR"
 
-    # نگه داشتن فقط N بکاپ آخر
+    # Keep only the latest N backups
     local all=( $(ls -1dt "$SCRIPT_DIR"/backup_* 2>/dev/null) )
     if (( ${#all[@]} > KEEP_BACKUPS )); then
       for ((i=KEEP_BACKUPS; i<${#all[@]}; i++)); do rm -rf "${all[$i]}"; done
@@ -199,6 +200,57 @@ registry_login_prompt(){
     info "Using public images or already-logged-in registry"
   fi
 }
+choose_topology_and_role(){
+  hdr "Topologies"
+  cat <<EOF
+  1) Single-node (all)
+  2) Two-node (Edge+App | Data)
+  3) Three-node (Edge | App | Data/Admin)
+EOF
+  read -p "Choose [1]: " topo; topo=${topo:-1}
+
+  case "$topo" in
+    1)
+      hdr "Role for THIS server"
+      echo "  1) all-in-one"
+      read -p "Choice [1]: " r; r=${r:-1}
+      ROLE="all"
+  RUN_LOCAL_DATA="y"      # data on this node
+      ;;
+    2)
+      hdr "Role for THIS server"
+      cat <<EO2
+  1) edge+app  (API/UI services; data external)
+  2) data      (Postgres/RabbitMQ/Redis only)
+EO2
+      read -p "Choice [1]: " r; r=${r:-1}
+      if [[ "$r" == "2" ]]; then
+        ROLE="data"
+        RUN_LOCAL_DATA="y"
+      else
+  ROLE="edge-app"
+  RUN_LOCAL_DATA="n"    # external data
+      fi
+      ;;
+    3)
+      hdr "Role for THIS server"
+      cat <<EO3
+  1) edge      (Caddy/ingress only)
+  2) app       (API/UI/processor/worker/jobs; data external)
+  3) data      (Postgres/RabbitMQ/Redis only)
+EO3
+      read -p "Choice [1]: " r; r=${r:-1}
+      case "$r" in
+        3) ROLE="data"; RUN_LOCAL_DATA="y" ;;
+        2) ROLE="app";  RUN_LOCAL_DATA="n" ;;
+        *) ROLE="edge"; RUN_LOCAL_DATA="n" ;;
+      esac
+      ;;
+    *) ROLE="all"; RUN_LOCAL_DATA="y" ;;
+  esac
+
+  ok "Preset selected → topology=$topo role=$ROLE"
+}
 
 # ---------------- Collect config ----------------
 collect_config(){
@@ -210,18 +262,17 @@ collect_config(){
   read -p "Client subdomain [client]: " CLIENT_SUB; CLIENT_SUB=${CLIENT_SUB:-client}
   CLIENT_APP_DOMAIN="$CLIENT_SUB.$DOMAIN"
 
-  # Data placement
-  hdr "Data Services on THIS node?"
-  read -p "Install Postgres/RabbitMQ/Redis locally on THIS server? (Y/n): " LOC; LOC=${LOC:-Y}
-  if [[ "$LOC" =~ ^[Yy]$ ]]; then
-    RUN_LOCAL_DATA="y"
-    POSTGRES_HOST="postgres"; RABBITMQ_HOST="rabbitmq"; REDIS_HOST="redis"
-  else
-    RUN_LOCAL_DATA="n"
-    read -p "POSTGRES_HOST [postgres]: " POSTGRES_HOST; POSTGRES_HOST=${POSTGRES_HOST:-postgres}
-    read -p "RABBITMQ_HOST [rabbitmq]: " RABBITMQ_HOST; RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
-    read -p "REDIS_HOST [redis]: " REDIS_HOST; REDIS_HOST=${REDIS_HOST:-redis}
-  fi
+# Data hosts depend on ROLE / RUN_LOCAL_DATA (set in choose_topology_and_role)
+if [[ "${RUN_LOCAL_DATA}" =~ ^[yY]$ ]]; then
+  POSTGRES_HOST="postgres"
+  RABBITMQ_HOST="rabbitmq"
+  REDIS_HOST="redis"
+else
+  read -p "POSTGRES_HOST [postgres]: " POSTGRES_HOST; POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+  read -p "RABBITMQ_HOST [rabbitmq]: " RABBITMQ_HOST; RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
+  read -p "REDIS_HOST [redis]: " REDIS_HOST; REDIS_HOST=${REDIS_HOST:-redis}
+fi
+
 
   # Credentials with auto-strong defaults
   hdr "Credentials"
@@ -253,24 +304,31 @@ collect_config(){
   read -p "Processor image [${REG_PREFIX}digital-processer:latest]: " PROCESSOR_IMAGE; PROCESSOR_IMAGE=${PROCESSOR_IMAGE:-${REG_PREFIX}digital-processer:latest}
   read -p "Worker image [${REG_PREFIX}digital-order-worker:latest]: " ORDER_WORKER_IMAGE; ORDER_WORKER_IMAGE=${ORDER_WORKER_IMAGE:-${REG_PREFIX}digital-order-worker:latest}
   read -p "Jobs image [${REG_PREFIX}digital-jobs:latest]: " JOBS_IMAGE; JOBS_IMAGE=${JOBS_IMAGE:-${REG_PREFIX}digital-jobs:latest}
+# Decide Caddy default based on ROLE
+case "$ROLE" in
+  edge)       ENABLE_CADDY="y" ;;         # required on edge
+  edge-app)   ENABLE_CADDY=""  ;;         # ask user
+  all)        ENABLE_CADDY=""  ;;         # ask user
+  app|data)   ENABLE_CADDY="n" ;;         # default off
+esac
 
   # Caddy
-  hdr "Edge / Caddy"
-  read -p "Enable Caddy on THIS node? (y/N): " ENABLE_CADDY; ENABLE_CADDY=${ENABLE_CADDY:-N}
+hdr "Edge / Caddy"
+if [[ "$ROLE" == "edge" ]]; then
+  info "Caddy enabled automatically for edge role"
+  ENABLE_CADDY="y"
+else
+  if [[ -z "${ENABLE_CADDY}" ]]; then
+    read -p "Enable Caddy on THIS node? (y/N): " ENABLE_CADDY; ENABLE_CADDY=${ENABLE_CADDY:-N}
+  else
+    info "Caddy default for role '$ROLE' → ${ENABLE_CADDY^^}"
+  fi
+fi
 
   # Sizing with a SINGLE number
   hdr "Sizing / Autoscale (based on active users)"
   read -p "Active users at peak (concurrent) [10000]: " ACTIVE; ACTIVE=${ACTIVE:-10000}
-  local RPS=$(( ACTIVE * RPM_PER_USER_DEFAULT / 60 ))
-  local need_mc=$(( RPS * 8 ))           # 8m per request (tunable)
-  local web_repl=$(( (need_mc + 800) / 800 ))
-  [[ $web_repl -lt 2 ]] && web_repl=2
-  local proc_repl=$(( (ACTIVE/2000) + 1 ))
-  local worker_repl=$(( (ACTIVE/3000) + 1 ))
-
-  WEB_REPL="$web_repl"
-  PROCESSER_REPLICAS="$proc_repl"
-  ORDER_WORKER_REPLICAS="$worker_repl"
+  read WEB_REPL PROCESSER_REPLICAS ORDER_WORKER_REPLICAS < <(calc_replicas_from_active "$ACTIVE")
   info "Replicas → webapp=${WEB_REPL}, processor=${PROCESSER_REPLICAS}, worker=${ORDER_WORKER_REPLICAS}"
 
   # Write .env
@@ -337,6 +395,7 @@ services:
       resources:
         limits: { cpus: "1.0", memory: "1024M" }
     networks: [ digitalbot_internal, digitalbot_web ]
+    profiles: ["app"]
 
   client-app:
     image: ${CLIENT_APP_IMAGE}
@@ -345,6 +404,7 @@ services:
       resources:
         limits: { cpus: "0.5", memory: "256M" }
     networks: [ digitalbot_web ]
+    profiles: ["app"]
 
   processor:
     image: ${PROCESSOR_IMAGE}
@@ -362,6 +422,7 @@ services:
       resources:
         limits: { cpus: "0.8", memory: "768M" }
     networks: [ digitalbot_internal ]
+    profiles: ["app"]
 
   worker:
     image: ${ORDER_WORKER_IMAGE}
@@ -377,6 +438,7 @@ services:
     deploy:
       replicas: ${ORDER_WORKER_REPLICAS}
     networks: [ digitalbot_internal ]
+    profiles: ["app"]
 
   jobs:
     image: ${JOBS_IMAGE}
@@ -390,6 +452,7 @@ services:
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
     networks: [ digitalbot_internal ]
+    profiles: ["app"]
 
   # Data services only when profile 'data' is enabled
   postgres:
@@ -562,12 +625,28 @@ configure_backup(){
 # ---------------- Compose wrapper ----------------
 compose_cmd(){
   local profiles=()
+  # app profile?
+  case "${ROLE:-}" in
+    all|edge-app|app) profiles+=( --profile app ) ;;
+  esac
+  # data / caddy profiles?
   if [[ -f "$ENV_FILE" ]]; then
-    local en_caddy="$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2 || true)"
-    local run_data="$(grep -E '^RUN_LOCAL_DATA=' "$ENV_FILE" | cut -d= -f2 || true)"
-    [[ "$en_caddy" =~ ^[yY]$ ]] && profiles+=( --profile caddy )
-    [[ "$run_data" =~ ^[yY]$ ]] && profiles+=( --profile data )
+    # Also read from .env, but ROLE still influences decisions
+    local run_data_env="$(grep -E '^RUN_LOCAL_DATA=' "$ENV_FILE" | cut -d= -f2 || true)"
+    if [[ "${ROLE:-}" == "all" || "${ROLE:-}" == "data" || "$run_data_env" =~ ^[yY]$ ]]; then
+      profiles+=( --profile data )
+    fi
+    local en_caddy_env="$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2 || true)"
+    if [[ "${ROLE:-}" == "edge" || "$en_caddy_env" =~ ^[yY]$ ]]; then
+      profiles+=( --profile caddy )
+    fi
+  else
+    # Before .env exists: if role=edge, bring up caddy too
+    [[ "${ROLE:-}" == "edge" ]] && profiles+=( --profile caddy )
+    [[ "${ROLE:-}" == "data" || "${ROLE:-}" == "all" ]] && profiles+=( --profile data )
+    [[ "${ROLE:-}" == "all" || "${ROLE:-}" == "edge-app" || "${ROLE:-}" == "app" ]] && profiles+=( --profile app )
   fi
+
   docker compose -f "$COMPOSE_FILE" "${profiles[@]}" "$@"
 }
 
@@ -577,6 +656,7 @@ do_install(){
   ensure_packages
   backup_existing
   registry_login_prompt
+  choose_topology_and_role     # added
   collect_config
   generate_compose
   write_caddy
@@ -592,16 +672,16 @@ do_scale(){
   hdr "Scale (single input)"
   source "$ENV_FILE"
 
-  # فقط یک سؤال
+  # Single question for sizing
   read -p "Active users at peak (concurrent) [${ACTIVE_USERS_LAST:-10000}]: " ACTIVE
   ACTIVE="${ACTIVE:-${ACTIVE_USERS_LAST:-10000}}"
 
-  # محاسبهٔ خودکار (RPM ثابت 6)
+  # Automatic calculation (fixed RPM 6)
   read WEB PRC WRK < <(calc_replicas_from_active "$ACTIVE")
 
   info "Calculated replicas → webapp=${WEB}, processor=${PRC}, worker=${WRK}"
 
-  # ذخیره در .env (برای پایداری)
+  # Persist in .env
   grep -q '^ACTIVE_USERS_LAST=' "$ENV_FILE" && \
     sed -i "s/^ACTIVE_USERS_LAST=.*/ACTIVE_USERS_LAST=${ACTIVE}/" "$ENV_FILE" || \
     echo "ACTIVE_USERS_LAST=${ACTIVE}" >> "$ENV_FILE"
@@ -610,11 +690,11 @@ do_scale(){
   sed -i "s/^PROCESSER_REPLICAS=.*/PROCESSER_REPLICAS=${PRC}/" "$ENV_FILE" || true
   sed -i "s/^ORDER_WORKER_REPLICAS=.*/ORDER_WORKER_REPLICAS=${WRK}/" "$ENV_FILE" || true
 
-  # اعمال اسکیل
+  # Apply scaling
   compose_cmd up -d --scale webapp="$WEB" --scale processor="$PRC" --scale worker="$WRK"
   ok "Scaled successfully"
 
-  # بونس ملایم (اختیاری)
+  # Gentle bounce (optional)
   read -p "Do gentle bounce of webapp (sequential restart)? (y/N): " BNC; BNC=${BNC:-N}
   if [[ "$BNC" =~ ^[yY]$ ]]; then
     gentle_bounce_service "webapp"
