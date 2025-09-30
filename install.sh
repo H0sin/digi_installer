@@ -75,6 +75,20 @@ ask_int_in_range() {
   done
 }
 
+# ask for yes/no with default; returns 'y' or 'n'
+ask_yn() {
+  local prompt="$1" def="${2:-N}" ans
+  while :; do
+    read -p "$prompt" ans
+    ans="${ans:-$def}"
+    if [[ "$ans" =~ ^[yYnN]$ ]]; then
+      [[ "$ans" =~ ^[yY]$ ]] && printf "y" || printf "n"
+      return 0
+    fi
+    err "Please answer y or n"
+  done
+}
+
 # ---------------- Workdir handling ----------------
 DEFAULT_WORKDIR="/opt/digitalbot"
 WORKDIR_ARG=""
@@ -188,8 +202,8 @@ backup_existing(){
 # ---------------- Registry login (optional) ----------------
 registry_login_prompt(){
   hdr "Docker Registry"
-  read -p "Use a PRIVATE registry? (y/N): " USE_REG; USE_REG=${USE_REG:-N}
-  if [[ "$USE_REG" =~ ^[yY]$ ]]; then
+  USE_REG="$(ask_yn "Use a PRIVATE registry? (y/N): " N)"
+  if [[ "$USE_REG" == "y" ]]; then
     while :; do
       read -p "Registry URL (e.g. registry.example.com) [docker.io]: " REGISTRY_URL; REGISTRY_URL=${REGISTRY_URL:-docker.io}
       read -p "Registry username: " REG_USER
@@ -199,8 +213,8 @@ registry_login_prompt(){
         break
       else
         err "Login failed for $REGISTRY_URL"
-        read -p "Try again? (y/N): " TRY; TRY=${TRY:-N}
-        if [[ ! "$TRY" =~ ^[yY]$ ]]; then
+        TRY="$(ask_yn "Try again? (y/N): " N)"
+        if [[ "$TRY" != "y" ]]; then
           warn "Skipping registry login"
           REGISTRY_URL=""; REG_USER=""; REG_PASS=""
           break
@@ -219,13 +233,13 @@ choose_topology_and_role(){
   2) Two-node (Edge+App | Data)
   3) Three-node (Edge | App | Data/Admin)
 EOF
-  read -p "Choose [1]: " topo; topo=${topo:-1}
+  topo="$(ask_int_in_range 'Choose [1]: ' 1 1 3)"
 
   case "$topo" in
     1)
       hdr "Role for THIS server"
-      echo "  1) all-in-one"
-      read -p "Choice [1]: " r; r=${r:-1}
+    echo "  1) all-in-one"
+    r="$(ask_int_in_range 'Choice [1]: ' 1 1 1)"
       ROLE="all"
   RUN_LOCAL_DATA="y"      # data on this node
       ;;
@@ -235,7 +249,7 @@ EOF
   1) edge+app  (API/UI services; data external)
   2) data      (Postgres/RabbitMQ/Redis only)
 EO2
-      read -p "Choice [1]: " r; r=${r:-1}
+      r="$(ask_int_in_range 'Choice [1]: ' 1 1 2)"
       if [[ "$r" == "2" ]]; then
         ROLE="data"
         RUN_LOCAL_DATA="y"
@@ -251,7 +265,7 @@ EO2
   2) app       (API/UI/processor/worker/jobs; data external)
   3) data      (Postgres/RabbitMQ/Redis only)
 EO3
-      read -p "Choice [1]: " r; r=${r:-1}
+      r="$(ask_int_in_range 'Choice [1]: ' 1 1 3)"
       case "$r" in
         3) ROLE="data"; RUN_LOCAL_DATA="y" ;;
         2) ROLE="app";  RUN_LOCAL_DATA="n" ;;
@@ -316,30 +330,21 @@ fi
   read -p "Processor image [${REG_PREFIX}digital-processer:latest]: " PROCESSOR_IMAGE; PROCESSOR_IMAGE=${PROCESSOR_IMAGE:-${REG_PREFIX}digital-processer:latest}
   read -p "Worker image [${REG_PREFIX}digital-order-worker:latest]: " ORDER_WORKER_IMAGE; ORDER_WORKER_IMAGE=${ORDER_WORKER_IMAGE:-${REG_PREFIX}digital-order-worker:latest}
   read -p "Jobs image [${REG_PREFIX}digital-jobs:latest]: " JOBS_IMAGE; JOBS_IMAGE=${JOBS_IMAGE:-${REG_PREFIX}digital-jobs:latest}
-# Decide Caddy default based on ROLE
-case "$ROLE" in
-  edge)       ENABLE_CADDY="y" ;;         # required on edge
-  edge-app)   ENABLE_CADDY=""  ;;         # ask user
-  all)        ENABLE_CADDY=""  ;;         # ask user
-  app|data)   ENABLE_CADDY="n" ;;         # default off
-esac
-
-  # Caddy
-hdr "Edge / Caddy"
-if [[ "$ROLE" == "edge" ]]; then
-  info "Caddy enabled automatically for edge role"
-  ENABLE_CADDY="y"
-else
-  if [[ -z "${ENABLE_CADDY}" ]]; then
-    read -p "Enable Caddy on THIS node? (y/N): " ENABLE_CADDY; ENABLE_CADDY=${ENABLE_CADDY:-N}
-  else
-    info "Caddy default for role '$ROLE' → ${ENABLE_CADDY^^}"
-  fi
-fi
+  # --- Edge / Caddy: decide automatically from ROLE (no prompt) ---
+  case "$ROLE" in
+    edge|all|edge-app)
+      ENABLE_CADDY="y"
+      info "Caddy auto-enabled for role '$ROLE'"
+      ;;
+    app|data|*)
+      ENABLE_CADDY="n"
+      info "Caddy auto-disabled for role '$ROLE'"
+      ;;
+  esac
 
   # Sizing with a SINGLE number
   hdr "Sizing / Autoscale (based on active users)"
-  read -p "Active users at peak (concurrent) [10000]: " ACTIVE; ACTIVE=${ACTIVE:-10000}
+  ACTIVE="$(ask_int_in_range 'Active users at peak (concurrent) [10000]: ' 10000 1 10000000)"
   read WEB_REPL PROCESSER_REPLICAS ORDER_WORKER_REPLICAS < <(calc_replicas_from_active "$ACTIVE")
   info "Replicas → webapp=${WEB_REPL}, processor=${PROCESSER_REPLICAS}, worker=${ORDER_WORKER_REPLICAS}"
 
@@ -603,8 +608,8 @@ configure_backup(){
   hdr "Backup setup"
   write_backup_script
 
-  read -p "Enable Telegram delivery? (y/N): " T; T=${T:-N}
-  if [[ "$T" =~ ^[yY]$ ]]; then
+  T="$(ask_yn "Enable Telegram delivery? (y/N): " N)"
+  if [[ "$T" == "y" ]]; then
     read -p "TELEGRAM_BOT_TOKEN: " TB
     read -p "TELEGRAM_CHAT_ID: " TC
     if [[ -n "$TB" && -n "$TC" ]]; then
@@ -618,8 +623,8 @@ configure_backup(){
     fi
   fi
 
-  read -p "Create cron job for backups? (y/N): " C; C=${C:-N}
-  if [[ "$C" =~ ^[yY]$ ]]; then
+  C="$(ask_yn "Create cron job for backups? (y/N): " N)"
+  if [[ "$C" == "y" ]]; then
     HRS="$(ask_int_in_range 'Backup every how many hours? [6]: ' 6 1 24)"
     MIN=$(( RANDOM % 60 ))
     if [[ "$HRS" -eq 1 ]]; then
@@ -637,28 +642,15 @@ configure_backup(){
 # ---------------- Compose wrapper ----------------
 compose_cmd(){
   local profiles=()
-  # app profile?
   case "${ROLE:-}" in
     all|edge-app|app) profiles+=( --profile app ) ;;
   esac
-  # data / caddy profiles?
-  if [[ -f "$ENV_FILE" ]]; then
-    # Also read from .env, but ROLE still influences decisions
-    local run_data_env="$(grep -E '^RUN_LOCAL_DATA=' "$ENV_FILE" | cut -d= -f2 || true)"
-    if [[ "${ROLE:-}" == "all" || "${ROLE:-}" == "data" || "$run_data_env" =~ ^[yY]$ ]]; then
-      profiles+=( --profile data )
-    fi
-    local en_caddy_env="$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2 || true)"
-    if [[ "${ROLE:-}" == "edge" || "$en_caddy_env" =~ ^[yY]$ ]]; then
-      profiles+=( --profile caddy )
-    fi
-  else
-    # Before .env exists: if role=edge, bring up caddy too
-    [[ "${ROLE:-}" == "edge" ]] && profiles+=( --profile caddy )
-    [[ "${ROLE:-}" == "data" || "${ROLE:-}" == "all" ]] && profiles+=( --profile data )
-    [[ "${ROLE:-}" == "all" || "${ROLE:-}" == "edge-app" || "${ROLE:-}" == "app" ]] && profiles+=( --profile app )
+  if [[ "${ROLE:-}" == "all" || "${ROLE:-}" == "data" || "$(grep -E '^RUN_LOCAL_DATA=' "$ENV_FILE" 2>/dev/null | cut -d= -f2)" =~ ^[yY]$ ]]; then
+    profiles+=( --profile data )
   fi
-
+  if [[ "${ROLE:-}" == "edge" || "$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2)" =~ ^[yY]$ ]]; then
+    profiles+=( --profile caddy )
+  fi
   docker compose -f "$COMPOSE_FILE" "${profiles[@]}" "$@"
 }
 
@@ -685,8 +677,7 @@ do_scale(){
   source "$ENV_FILE"
 
   # Single question for sizing
-  read -p "Active users at peak (concurrent) [${ACTIVE_USERS_LAST:-10000}]: " ACTIVE
-  ACTIVE="${ACTIVE:-${ACTIVE_USERS_LAST:-10000}}"
+  ACTIVE="$(ask_int_in_range "Active users at peak (concurrent) [${ACTIVE_USERS_LAST:-10000}]: " ${ACTIVE_USERS_LAST:-10000} 1 10000000)"
 
   # Automatic calculation (fixed RPM 6)
   read WEB PRC WRK < <(calc_replicas_from_active "$ACTIVE")
@@ -707,8 +698,8 @@ do_scale(){
   ok "Scaled successfully"
 
   # Gentle bounce (optional)
-  read -p "Do gentle bounce of webapp (sequential restart)? (y/N): " BNC; BNC=${BNC:-N}
-  if [[ "$BNC" =~ ^[yY]$ ]]; then
+  BNC="$(ask_yn "Do gentle bounce of webapp (sequential restart)? (y/N): " N)"
+  if [[ "$BNC" == "y" ]]; then
     gentle_bounce_service "webapp"
   fi
 }
