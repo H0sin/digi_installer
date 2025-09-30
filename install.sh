@@ -261,7 +261,7 @@ collect_config(){
   # Sizing with a SINGLE number
   hdr "Sizing / Autoscale (based on active users)"
   read -p "Active users at peak (concurrent) [10000]: " ACTIVE; ACTIVE=${ACTIVE:-10000}
-  local RPS=$(( ACTIVE * RPM_PER_USER / 60 ))
+  local RPS=$(( ACTIVE * RPM_PER_USER_DEFAULT / 60 ))
   local need_mc=$(( RPS * 8 ))           # 8m per request (tunable)
   local web_repl=$(( (need_mc + 800) / 800 ))
   [[ $web_repl -lt 2 ]] && web_repl=2
