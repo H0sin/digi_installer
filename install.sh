@@ -11,6 +11,35 @@ set -euo pipefail
 # - Multi-node ready (external DB/MQ/Redis)
 # - Backup helper (Postgres → ZIP → Telegram)
 #############################################
+# fixed RPM per active user (keep simple for scale)
+RPM_PER_USER_DEFAULT=6
+
+calc_replicas_from_active() {
+  local ACTIVE="$1"
+  local RPM_PER_USER="${2:-$RPM_PER_USER_DEFAULT}"
+  local RPS=$(( ACTIVE * RPM_PER_USER / 60 ))
+  local need_mc=$(( RPS * 8 ))                    # 8m per request (tunable)
+  local WEB=$(( (need_mc + 800) / 800 )); [[ $WEB -lt 2 ]] && WEB=2
+  local PROC=$(( (ACTIVE/2000) + 1 ))
+  local WORK=$(( (ACTIVE/3000) + 1 ))
+  echo "$WEB $PROC $WORK"
+}
+
+gentle_bounce_service() {
+  # sequential restart to avoid full drop
+  local svc="$1"
+  info "Gentle bounce for service: $svc"
+  local ids
+  ids=$(docker compose -f "$COMPOSE_FILE" ps -q "$svc")
+  if [[ -z "$ids" ]]; then warn "No containers for $svc"; return 0; fi
+  # restart one by one with short delay
+  for id in $ids; do
+    info "Restarting $svc container $id"
+    docker restart "$id" >/dev/null
+    sleep 2
+  done
+  ok "Gentle bounce done for $svc"
+}
 
 BOLD='\033[1m'; RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 hdr(){ echo -e "\n${BOLD}${BLUE}═══════════════════════════════════════════════════════${NC}\n${BOLD}${BLUE}  $*${NC}\n${BOLD}${BLUE}═══════════════════════════════════════════════════════${NC}\n"; }
@@ -20,6 +49,30 @@ warn(){ echo -e "${YELLOW}[WARN]${NC} $*"; }
 err(){ echo -e "${RED}[ERROR]${NC} $*"; }
 # Strong password generator
 gen_pw(){ LC_ALL=C tr -dc 'A-Za-z0-9!@#%^_+=' </dev/urandom | head -c ${1:-24}; echo; }
+# Prompt until non-empty (required field)
+ask_required() {
+  local prompt="$1" val=""
+  while :; do
+    read -p "$prompt" val
+    if [[ -n "$val" ]]; then
+      printf "%s" "$val"
+      return 0
+    else
+      err "This field is required"
+    fi
+  done
+}
+
+# ask integer within range, with default
+ask_int_in_range() {
+  local prompt="$1" def="$2" lo="$3" hi="$4" v
+  while :; do
+    read -p "$prompt" v
+    v="${v:-$def}"
+    [[ "$v" =~ ^[0-9]+$ ]] && (( v>=lo && v<=hi )) && { printf "%s" "$v"; return 0; }
+    err "Enter an integer between $lo and $hi"
+  done
+}
 
 # ---------------- Workdir handling ----------------
 DEFAULT_WORKDIR="/opt/digitalbot"
@@ -77,16 +130,55 @@ ensure_packages(){
 }
 
 # ---------------- Backup old config ----------------
+# keep at most N backups; backup only when content changed
+KEEP_BACKUPS=${KEEP_BACKUPS:-3}
+
 backup_existing(){
-  if [[ -f "$ENV_FILE" || -f "$COMPOSE_FILE" || -f "$CADDY_FILE" ]]; then
+  local did_any=0
+  local src_env="$ENV_FILE" src_comp="$COMPOSE_FILE" src_caddy="$CADDY_FILE"
+  # اگر هیچ فایلی وجود ندارد، بکاپ نگیر
+  [[ ! -f "$src_env" && ! -f "$src_comp" && ! -f "$src_caddy" ]] && { return 0; }
+
+  # محاسبه هش فعلی محتوا
+  local cur_hash
+  cur_hash="$( ( [[ -f "$src_env" ]] && sha256sum "$src_env"; \
+                 [[ -f "$src_comp" ]] && sha256sum "$src_comp"; \
+                 [[ -f "$src_caddy" ]] && sha256sum "$src_caddy" ) | awk '{print $1}' | sha256sum | awk '{print $1}' )"
+
+  # پیدا کردن آخرین بکاپ و مقایسه هش
+  local last_dir last_hash=""
+  last_dir="$(ls -1dt "$SCRIPT_DIR"/backup_* 2>/dev/null | head -n1 || true)"
+  if [[ -n "$last_dir" && -d "$last_dir" ]]; then
+    last_hash="$( ( [[ -f "$last_dir/.env" ]] && sha256sum "$last_dir/.env"; \
+                    [[ -f "$last_dir/docker-compose.yml" ]] && sha256sum "$last_dir/docker-compose.yml"; \
+                    [[ -f "$last_dir/Caddyfile" ]] && sha256sum "$last_dir/Caddyfile" ) | awk '{print $1}' | sha256sum | awk '{print $1}' )"
+  fi
+
+  # فقط اگر تغییر کرده بکاپ بساز
+  if [[ "$cur_hash" != "$last_hash" ]]; then
     hdr "Backup existing config"
-    local BACKUP_DIR="$SCRIPT_DIR/backup_$(date +%Y%m%d_%H%M%S)"; mkdir -p "$BACKUP_DIR"
-    [[ -f "$ENV_FILE" ]] && cp "$ENV_FILE" "$BACKUP_DIR/.env"
-    [[ -f "$COMPOSE_FILE" ]] && cp "$COMPOSE_FILE" "$BACKUP_DIR/docker-compose.yml"
-    [[ -f "$CADDY_FILE" ]] && cp "$CADDY_FILE" "$BACKUP_DIR/Caddyfile"
-    ok "Backed up to $BACKUP_DIR"
+    local BACKUP_DIR="$SCRIPT_DIR/backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    [[ -f "$src_env" ]]  && cp "$src_env"  "$BACKUP_DIR/.env"               && did_any=1
+    [[ -f "$src_comp" ]] && cp "$src_comp" "$BACKUP_DIR/docker-compose.yml" && did_any=1
+    [[ -f "$src_caddy" ]]&& cp "$src_caddy" "$BACKUP_DIR/Caddyfile"         && did_any=1
+    if [[ "$did_any" -eq 1 ]]; then
+      ok "Backed up to $BACKUP_DIR"
+    fi
+
+    # پاک‌سازی بکاپ‌های قدیمی‌تر از KEEP_BACKUPS
+    local all=( $(ls -1dt "$SCRIPT_DIR"/backup_* 2>/dev/null) )
+    if (( ${#all[@]} > KEEP_BACKUPS )); then
+      for ((i=KEEP_BACKUPS; i<${#all[@]}; i++)); do
+        rm -rf "${all[$i]}"
+      done
+      info "Pruned old backups; kept last $KEEP_BACKUPS"
+    fi
+  else
+    info "No config change → skipping backup"
   fi
 }
+
 
 # ---------------- Registry login (optional) ----------------
 registry_login_prompt(){
@@ -110,7 +202,7 @@ collect_config(){
   read -p "Project name [digitalbot]: " COMPOSE_PROJECT_NAME; COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-digitalbot}
 
   # Domains for app — separate from REGISTRY
-  read -p "Main domain (e.g. example.com): " DOMAIN; [[ -z "$DOMAIN" ]] && { err "Domain required"; exit 1; }
+  DOMAIN="$(ask_required 'Main domain (e.g. example.com): ')"
   read -p "Client subdomain [client]: " CLIENT_SUB; CLIENT_SUB=${CLIENT_SUB:-client}
   CLIENT_APP_DOMAIN="$CLIENT_SUB.$DOMAIN"
 
@@ -173,9 +265,10 @@ collect_config(){
   local proc_repl=$(( (ACTIVE/2000) + 1 ))
   local worker_repl=$(( (ACTIVE/3000) + 1 ))
 
-  read -p "Webapp replicas [${web_repl}]: " WEB_REPL; WEB_REPL=${WEB_REPL:-$web_repl}
-  read -p "Processor replicas [${proc_repl}]: " PROCESSER_REPLICAS; PROCESSER_REPLICAS=${PROCESSER_REPLICAS:-$proc_repl}
-  read -p "Worker replicas [${worker_repl}]: " ORDER_WORKER_REPLICAS; ORDER_WORKER_REPLICAS=${ORDER_WORKER_REPLICAS:-$worker_repl}
+  WEB_REPL="$web_repl"
+  PROCESSER_REPLICAS="$proc_repl"
+  ORDER_WORKER_REPLICAS="$worker_repl"
+  info "Replicas → webapp=${WEB_REPL}, processor=${PROCESSER_REPLICAS}, worker=${ORDER_WORKER_REPLICAS}"
 
   # Write .env
   hdr "Write .env"
@@ -392,49 +485,45 @@ EOF
 }
 
 # ---------------- Backup helper ----------------
-write_backup_script(){
-  cat >"$BACKUP_SCRIPT"<<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-ENV_FILE="$(dirname "$0")/../.env"; source "$ENV_FILE"
-STAMP=$(date +%Y%m%d_%H%M%S)
-OUTDIR="$(dirname "$0")/../backups"; mkdir -p "$OUTDIR"
-FILE="${OUTDIR}/pg_${POSTGRES_DB}_${STAMP}.sql.gz"
-
-echo "[INFO] dumping ${POSTGRES_DB}…"
-docker compose -f "$(dirname "$0")/../docker-compose.yml" exec -T postgres \
-  pg_dump -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip > "$FILE"
-
-echo "[OK] dump: $FILE"
-if [[ "${TELEGRAM_BOT_TOKEN:-}" != "" && "${TELEGRAM_CHAT_ID:-}" != "" ]]; then
-  echo "[INFO] sending to Telegram…"
-  curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-    -F "chat_id=${TELEGRAM_CHAT_ID}" \
-    -F "document=@${FILE}" \
-    -F "caption=DB backup ${STAMP}" >/dev/null
-  echo "[OK] sent."
-fi
-EOS
-  chmod +x "$BACKUP_SCRIPT"
-}
+write_backup_script
 
 configure_backup(){
   hdr "Backup setup"
   write_backup_script
+
   read -p "Enable Telegram delivery? (y/N): " T; T=${T:-N}
   if [[ "$T" =~ ^[yY]$ ]]; then
-    read -p "TELEGRAM_BOT_TOKEN: " TB; read -p "TELEGRAM_CHAT_ID: " TC
-    {
-      grep -q '^TELEGRAM_BOT_TOKEN=' "$ENV_FILE" && sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=${TB}|" "$ENV_FILE" || echo "TELEGRAM_BOT_TOKEN=${TB}" >> "$ENV_FILE"
-      grep -q '^TELEGRAM_CHAT_ID=' "$ENV_FILE" && sed -i "s|^TELEGRAM_CHAT_ID=.*|TELEGRAM_CHAT_ID=${TC}|" "$ENV_FILE" || echo "TELEGRAM_CHAT_ID=${TC}" >> "$ENV_FILE"
-    }
+    read -p "TELEGRAM_BOT_TOKEN: " TB
+    read -p "TELEGRAM_CHAT_ID: " TC
+    if [[ -n "$TB" && -n "$TC" ]]; then
+      {
+        grep -q '^TELEGRAM_BOT_TOKEN=' "$ENV_FILE" && sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=${TB}|" "$ENV_FILE" || echo "TELEGRAM_BOT_TOKEN=${TB}" >> "$ENV_FILE"
+        grep -q '^TELEGRAM_CHAT_ID=' "$ENV_FILE" && sed -i "s|^TELEGRAM_CHAT_ID=.*|TELEGRAM_CHAT_ID=${TC}|" "$ENV_FILE" || echo "TELEGRAM_CHAT_ID=${TC}" >> "$ENV_FILE"
+      }
+      ok "Telegram delivery configured"
+    else
+      warn "Telegram token/chat id empty → skipping Telegram delivery"
+    fi
   fi
-  read -p "Create cron job (every 6h)? (y/N): " C; C=${C:-N}
+
+  read -p "Create cron job for backups? (y/N): " C; C=${C:-N}
   if [[ "$C" =~ ^[yY]$ ]]; then
-    (crontab -l 2>/dev/null; echo "0 */6 * * * ${BACKUP_SCRIPT} >/dev/null 2>&1") | crontab -
-    ok "Cron installed: every 6h"
+    # بپرس چند ساعته یک‌بار؛ 1 تا 24
+    HRS="$(ask_int_in_range 'Backup every how many hours? [6]: ' 6 1 24)"
+    # یک دقیقهٔ تصادفی برای پخش بار
+    MIN=$(( RANDOM % 60 ))
+    # اگر هر 1 ساعت: MIN * * * *؛ اگر هر n ساعت: MIN */n * * *
+    if [[ "$HRS" -eq 1 ]]; then
+      CRON_EXPR="${MIN} * * * * ${BACKUP_SCRIPT} >/dev/null 2>&1"
+    else
+      CRON_EXPR="${MIN} */${HRS} * * * ${BACKUP_SCRIPT} >/dev/null 2>&1"
+    fi
+    # نصب در کرون؛ قبلیِ همین اسکریپت را حذف و جدید را اضافه کن
+    ( crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT" ; echo "$CRON_EXPR" ) | crontab -
+    ok "Cron installed: every ${HRS}h at minute ${MIN}"
   fi
 }
+
 
 # ---------------- Compose wrapper ----------------
 compose_cmd(){
@@ -466,17 +555,38 @@ do_install(){
 do_update(){ hdr "Update"; ensure_packages; compose_cmd pull; compose_cmd up -d; ok "Updated"; }
 
 do_scale(){
-  hdr "Scale"
+  hdr "Scale (single input)"
   source "$ENV_FILE"
-  read -p "Webapp replicas [${WEBAPP_REPLICAS:-2}]: " WR; WR=${WR:-${WEBAPP_REPLICAS:-2}}
-  read -p "Processor replicas [${PROCESSER_REPLICAS:-2}]: " PR; PR=${PR:-${PROCESSER_REPLICAS:-2}}
-  read -p "Worker replicas [${ORDER_WORKER_REPLICAS:-2}]: " OR; OR=${OR:-${ORDER_WORKER_REPLICAS:-2}}
-  sed -i "s/^WEBAPP_REPLICAS=.*/WEBAPP_REPLICAS=${WR}/" "$ENV_FILE" || true
-  sed -i "s/^PROCESSER_REPLICAS=.*/PROCESSER_REPLICAS=${PR}/" "$ENV_FILE" || true
-  sed -i "s/^ORDER_WORKER_REPLICAS=.*/ORDER_WORKER_REPLICAS=${OR}/" "$ENV_FILE" || true
-  compose_cmd up -d --scale webapp="$WR" --scale processor="$PR" --scale worker="$OR"
-  ok "Scaled: webapp=${WR} processor=${PR} worker=${OR}"
+
+  # فقط یک سؤال
+  read -p "Active users at peak (concurrent) [${ACTIVE_USERS_LAST:-10000}]: " ACTIVE
+  ACTIVE="${ACTIVE:-${ACTIVE_USERS_LAST:-10000}}"
+
+  # محاسبهٔ خودکار (RPM ثابت 6)
+  read WEB PRC WRK < <(calc_replicas_from_active "$ACTIVE")
+
+  info "Calculated replicas → webapp=${WEB}, processor=${PRC}, worker=${WRK}"
+
+  # ذخیره در .env (برای پایداری)
+  grep -q '^ACTIVE_USERS_LAST=' "$ENV_FILE" && \
+    sed -i "s/^ACTIVE_USERS_LAST=.*/ACTIVE_USERS_LAST=${ACTIVE}/" "$ENV_FILE" || \
+    echo "ACTIVE_USERS_LAST=${ACTIVE}" >> "$ENV_FILE"
+
+  sed -i "s/^WEBAPP_REPLICAS=.*/WEBAPP_REPLICAS=${WEB}/" "$ENV_FILE" || true
+  sed -i "s/^PROCESSER_REPLICAS=.*/PROCESSER_REPLICAS=${PRC}/" "$ENV_FILE" || true
+  sed -i "s/^ORDER_WORKER_REPLICAS=.*/ORDER_WORKER_REPLICAS=${WRK}/" "$ENV_FILE" || true
+
+  # اعمال اسکیل
+  compose_cmd up -d --scale webapp="$WEB" --scale processor="$PRC" --scale worker="$WRK"
+  ok "Scaled successfully"
+
+  # بونس ملایم (اختیاری)
+  read -p "Do gentle bounce of webapp (sequential restart)? (y/N): " BNC; BNC=${BNC:-N}
+  if [[ "$BNC" =~ ^[yY]$ ]]; then
+    gentle_bounce_service "webapp"
+  fi
 }
+
 
 do_registry(){ hdr "Registry login"; read -p "Registry URL [docker.io]: " R; R=${R:-docker.io}; read -p "Username: " U; read -s -p "Password: " P; echo; echo "$P" | docker login "$R" -u "$U" --password-stdin; ok "Logged in to $R"; }
 
