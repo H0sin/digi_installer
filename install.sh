@@ -70,6 +70,9 @@ ask_int_in_range() {
   while :; do
     read -p "$prompt" v
     v="${v:-$def}"
+    # trim whitespace
+    v="${v//[$'\t\r\n ']}"
+    v="$(normalize_digits "$v")"
     [[ "$v" =~ ^[0-9]+$ ]] && (( v>=lo && v<=hi )) && { printf "%s" "$v"; return 0; }
     err "Enter an integer between $lo and $hi"
   done
@@ -81,12 +84,46 @@ ask_yn() {
   while :; do
     read -p "$prompt" ans
     ans="${ans:-$def}"
-    if [[ "$ans" =~ ^[yYnN]$ ]]; then
-      [[ "$ans" =~ ^[yY]$ ]] && printf "y" || printf "n"
-      return 0
-    fi
-    err "Please answer y or n"
+    # trim whitespace
+    ans="${ans//[$'\t\r\n ']}"
+    case "${ans,,}" in
+      y|yes|true|1) printf "y"; return 0;;
+      n|no|false|0) printf "n"; return 0;;
+      *) err "Please answer y or n";;
+    esac
   done
+}
+
+# Normalize Persian/Arabic-Indic digits to ASCII 0-9
+normalize_digits() {
+  local s="$1"
+  # Arabic-Indic: ٠١٢٣٤٥٦٧٨٩
+  s="${s//٠/0}"; s="${s//١/1}"; s="${s//٢/2}"; s="${s//٣/3}"; s="${s//٤/4}";
+  s="${s//٥/5}"; s="${s//٦/6}"; s="${s//٧/7}"; s="${s//٨/8}"; s="${s//٩/9}"
+  # Eastern Arabic-Indic (Persian): ۰۱۲۳۴۵۶۷۸۹
+  s="${s//۰/0}"; s="${s//۱/1}"; s="${s//۲/2}"; s="${s//۳/3}"; s="${s//۴/4}";
+  s="${s//۵/5}"; s="${s//۶/6}"; s="${s//۷/7}"; s="${s//۸/8}"; s="${s//۹/9}"
+  # Remove thousands separators (comma) if present
+  s="${s//,/}"
+  printf "%s" "$s"
+}
+
+# Non-blocking DNS sanity check
+dns_warn(){
+  local host="$1" ip_self ip_dns
+  ip_self="$(curl -fsS ifconfig.me 2>/dev/null || true)"
+  # getent may not exist on minimal systems; try getent then fallback to nslookup
+  if command -v getent >/dev/null 2>&1; then
+    ip_dns="$(getent ahostsv4 "$host" | awk '{print $1; exit}' 2>/dev/null || true)"
+  fi
+  if [[ -z "$ip_dns" ]]; then
+    ip_dns="$(nslookup "$host" 2>/dev/null | awk '/^Address: /{print $2; exit}' || true)"
+  fi
+  if [[ -z "$ip_dns" || -z "$ip_self" || "$ip_dns" != "$ip_self" ]]; then
+    warn "DNS for ${host} does not seem to resolve to this server (${ip_self}). SSL issuance may fail."
+  else
+    info "DNS for ${host} points to this server (${ip_self})"
+  fi
 }
 
 # ---------------- Workdir handling ----------------
@@ -288,6 +325,13 @@ collect_config(){
   read -p "Client subdomain [client]: " CLIENT_SUB; CLIENT_SUB=${CLIENT_SUB:-client}
   CLIENT_APP_DOMAIN="$CLIENT_SUB.$DOMAIN"
 
+  # --- ACME email; default to admin@domain if not provided elsewhere ---
+  if grep -q '^ACME_EMAIL=' "$ENV_FILE" 2>/dev/null; then
+    ACME_EMAIL="$(grep -E '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2-)"
+  else
+    ACME_EMAIL="admin@${DOMAIN}"
+  fi
+
 # Data hosts depend on ROLE / RUN_LOCAL_DATA (set in choose_topology_and_role)
 if [[ "${RUN_LOCAL_DATA}" =~ ^[yY]$ ]]; then
   POSTGRES_HOST="postgres"
@@ -380,13 +424,25 @@ RUN_LOCAL_DATA=${RUN_LOCAL_DATA}
 
 # Caddy
 ENABLE_CADDY=${ENABLE_CADDY}
+ACME_EMAIL=${ACME_EMAIL}
 
 # Replicas
 WEBAPP_REPLICAS=${WEB_REPL}
 PROCESSER_REPLICAS=${PROCESSER_REPLICAS}
 ORDER_WORKER_REPLICAS=${ORDER_WORKER_REPLICAS}
+
+# Optional admin domains (only set if you really plan to expose):
+# Uncomment or set interactively if you need them public.
+# RABBITMQ_DOMAIN=rabbitmq.${DOMAIN}
+# PGADMIN_DOMAIN=pgadmin.${DOMAIN}
+# REDISINSIGHT_DOMAIN=redis.${DOMAIN}
+# PORTAINER_DOMAIN=portainer.${DOMAIN}
 EOF
   chmod 600 "$ENV_FILE"; ok ".env ready → $ENV_FILE"
+
+  # DNS sanity checks (non-blocking)
+  dns_warn "$DOMAIN"
+  dns_warn "$CLIENT_APP_DOMAIN"
 }
 
 
@@ -521,6 +577,14 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+      - CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL}
+      - RABBITMQ_DOMAIN=${RABBITMQ_DOMAIN}
+      - PGADMIN_DOMAIN=${PGADMIN_DOMAIN}
+      - REDISINSIGHT_DOMAIN=${REDISINSIGHT_DOMAIN}
+      - PORTAINER_DOMAIN=${PORTAINER_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -548,23 +612,75 @@ EOF
 
 # ---------------- Caddyfile ----------------
 write_caddy(){
-  if [[ "$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2)" =~ ^[yY]$ ]]; then
-    hdr "Generate Caddyfile"
-    # shellcheck disable=SC2016
-    cat >"$CADDY_FILE"<<'EOF'
+  if [[ ! "$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2)" =~ ^[yY]$ ]]; then
+    warn "Caddy disabled → skipping Caddyfile"
+    return 0
+  fi
+
+  # Load env for templating
+  source "$ENV_FILE"
+
+  # Build site blocks dynamically
+  caddy_conf=$(
+    cat <<'HDR'
+{
+  email {$ACME_EMAIL}
+  # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory  # <- enable for testing only
+}
+HDR
+  )
+
+  # Core sites – always present
+  caddy_conf+="
 {$DOMAIN} {
-  reverse_proxy webapp:8080 {
-    header_up X-Real-IP {http.request.header.CF-Connecting-IP}
-  }
+  encode zstd gzip
+  reverse_proxy webapp:8080
 }
 {$CLIENT_APP_DOMAIN} {
+  encode zstd gzip
   reverse_proxy client-app:80
 }
-EOF
-    ok "Caddyfile → $CADDY_FILE"
-  else
-    warn "Caddy disabled"
+"
+
+  # Optional admin UIs (only if variable is non-empty and service likely exists)
+  # RabbitMQ UI
+  if [[ -n "${RABBITMQ_DOMAIN:-}" && "${RUN_LOCAL_DATA:-y}" =~ ^[yY]$ ]]; then
+    caddy_conf+="
+{$RABBITMQ_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy rabbitmq:15672
+}
+"
   fi
+
+  # (Examples to extend later)
+  if [[ -n "${PGADMIN_DOMAIN:-}" ]]; then
+    caddy_conf+="
+{$PGADMIN_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy pgadmin:80
+}
+"
+  fi
+  if [[ -n "${REDISINSIGHT_DOMAIN:-}" ]]; then
+    caddy_conf+="
+{$REDISINSIGHT_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy redisinsight:8001
+}
+"
+  fi
+  if [[ -n "${PORTAINER_DOMAIN:-}" ]]; then
+    caddy_conf+="
+{$PORTAINER_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy portainer:9000
+}
+"
+  fi
+
+  echo "$caddy_conf" > "$CADDY_FILE"
+  ok "Caddyfile → $CADDY_FILE"
 }
 
 # ---- place this ABOVE configure_backup() ----
@@ -638,6 +754,92 @@ configure_backup(){
 }
 
 
+
+# --- DB access open/close (Postgres publish port) ---
+ensure_pg_override(){
+  mkdir -p "$OPS_DIR"
+  cat > "$OPS_DIR/pg-open.override.yml" <<'YML'
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_BIND_ADDR:-0.0.0.0}:${POSTGRES_PUBLIC_PORT:-5432}:5432"
+YML
+}
+
+ufw_allow(){
+  local port="$1" cidr="$2"
+  if command -v ufw >/dev/null 2>&1; then
+    sudo ufw allow from "$cidr" to any port "$port" proto tcp || true
+  fi
+}
+ufw_delete_rule(){
+  local port="$1" cidr="$2"
+  if command -v ufw >/dev/null 2>&1; then
+    # Soft delete: ignore if rule does not exist
+    sudo ufw delete allow from "$cidr" to any port "$port" proto tcp 2>/dev/null || true
+  fi
+}
+
+db_access_open(){
+  hdr "Open Postgres externally (temporary)"
+  source "$ENV_FILE"
+  if [[ ! "${RUN_LOCAL_DATA:-y}" =~ ^[yY]$ ]]; then
+    err "Local Postgres is not enabled on this node (RUN_LOCAL_DATA=n)."
+    return 1
+  fi
+
+  # Port and bind address
+  read -p "Public port to expose [${POSTGRES_PUBLIC_PORT:-5432}]: " PPORT; PPORT=${PPORT:-${POSTGRES_PUBLIC_PORT:-5432}}
+  read -p "Bind address [${POSTGRES_BIND_ADDR:-0.0.0.0}] (use 127.0.0.1 to bind local only): " BADDR; BADDR=${BADDR:-${POSTGRES_BIND_ADDR:-0.0.0.0}}
+  # Optional IP restriction
+  read -p "Allowed CIDR (optional, e.g. 203.0.113.5/32). Leave empty to allow all: " CIDR
+
+  # Persist in .env
+  grep -q '^POSTGRES_PUBLIC_PORT=' "$ENV_FILE" && sed -i "s/^POSTGRES_PUBLIC_PORT=.*/POSTGRES_PUBLIC_PORT=${PPORT}/" "$ENV_FILE" || echo "POSTGRES_PUBLIC_PORT=${PPORT}" >> "$ENV_FILE"
+  grep -q '^POSTGRES_BIND_ADDR='  "$ENV_FILE" && sed -i "s/^POSTGRES_BIND_ADDR=.*/POSTGRES_BIND_ADDR=${BADDR}/"   "$ENV_FILE" || echo "POSTGRES_BIND_ADDR=${BADDR}"   >> "$ENV_FILE"
+  if [[ -n "$CIDR" ]]; then
+    grep -q '^POSTGRES_ALLOWED_CIDR=' "$ENV_FILE" && sed -i "s|^POSTGRES_ALLOWED_CIDR=.*|POSTGRES_ALLOWED_CIDR=${CIDR}|" "$ENV_FILE" || echo "POSTGRES_ALLOWED_CIDR=${CIDR}" >> "$ENV_FILE"
+  fi
+
+  ensure_pg_override
+
+  # Recreate only postgres with override (data profile)
+  docker compose -f "$COMPOSE_FILE" -f "$OPS_DIR/pg-open.override.yml" --profile data up -d postgres
+
+  # Firewall (optional)
+  if [[ -n "$CIDR" ]]; then
+    info "Applying ufw rule to allow ${CIDR} on ${PPORT}/tcp (if ufw is present)…"
+    ufw_allow "$PPORT" "$CIDR"
+  fi
+
+  # Show connection info
+  HOST_SHOW="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  echo
+  ok "Postgres is now exposed."
+  echo "Use this connection in DataGrip / psql:"
+  echo "  Host: ${HOST_SHOW}   Port: ${PPORT}"
+  echo "  DB:   ${POSTGRES_DB}  User: ${POSTGRES_USER}"
+  echo "  SSL:  disable (unless you configured TLS on Postgres)"
+  echo
+  warn "Remember to CLOSE access after testing."
+}
+
+db_access_close(){
+  hdr "Close Postgres external access"
+  source "$ENV_FILE"
+
+  # Remove ufw rule if previously set
+  if grep -q '^POSTGRES_ALLOWED_CIDR=' "$ENV_FILE"; then
+    CIDR="$(grep -E '^POSTGRES_ALLOWED_CIDR=' "$ENV_FILE" | cut -d= -f2-)"
+    PPORT="$(grep -E '^POSTGRES_PUBLIC_PORT=' "$ENV_FILE" | cut -d= -f2-)"
+    [[ -n "$CIDR" && -n "$PPORT" ]] && ufw_delete_rule "$PPORT" "$CIDR"
+  fi
+
+  # Bring up without override → published port is removed
+  docker compose -f "$COMPOSE_FILE" --profile data up -d postgres
+
+  ok "External access closed."
+}
 
 # ---------------- Compose wrapper ----------------
 compose_cmd(){
@@ -718,6 +920,7 @@ Workdir: ${SCRIPT_DIR}
 3) Scale (change replicas)
 4) Backup setup (PG → ZIP → Telegram)
 5) Registry login
+6) DB access (open/close Postgres)
 q) Quit
 MENU
   read -p "Choice: " ch
@@ -727,6 +930,17 @@ MENU
     3) do_scale ;;
     4) configure_backup ;;
     5) do_registry ;;
+    6)
+       # Disable when data is external
+       if [[ -f "$ENV_FILE" ]] && grep -q '^RUN_LOCAL_DATA=n' "$ENV_FILE"; then
+         err "DB access controls are disabled because RUN_LOCAL_DATA=n (external DB)."
+       else
+         echo "a) Open Postgres access"
+         echo "b) Close Postgres access"
+         read -p "Choose [a/b]: " dch
+         if [[ "$dch" == "a" ]]; then db_access_open; else db_access_close; fi
+       fi
+       ;;
     q|Q) exit 0 ;;
     *) err "Invalid choice" ;;
   esac
