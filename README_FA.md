@@ -2,6 +2,29 @@
 
 ## نصب سریع
 
+### نصب با یک دستور (سریع‌ترین روش)
+
+نصب با یک دستور (مناسب برای سرورهای با یا بدون دسترسی sudo):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+یا با استفاده از wget:
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+**برای مخزن‌های خصوصی**، ابتدا اطلاعات کاربری GitHub خود را وارد کنید:
+
+```bash
+# کلون با اطلاعات کاربری GitHub
+git clone https://github.com/H0sin/digi_installer.git
+cd digi_installer
+./install.sh
+```
+
 ### نصب خودکار (پیشنهادی)
 
 اسکریپت نصب تعاملی را اجرا کنید:

@@ -35,6 +35,29 @@ The application consists of the following services with their respective domains
 
 ## Quick Start
 
+### One-Line Installation (Fastest)
+
+Install with a single command (works with or without sudo):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+Or using wget:
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+**For private repositories**, first set your GitHub credentials:
+
+```bash
+# Clone with GitHub credentials
+git clone https://github.com/H0sin/digi_installer.git
+cd digi_installer
+./install.sh
+```
+
 ### Automated Installation (Recommended)
 
 Run the interactive installation script:

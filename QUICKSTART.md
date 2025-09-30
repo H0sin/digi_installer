@@ -2,6 +2,26 @@
 
 ## Installation in 5 Minutes
 
+### Option 1: One-Line Installation (Fastest)
+
+Install directly from GitHub with a single command:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+Or using wget:
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+**Note:** This works with or without sudo access. The script will automatically detect and use the appropriate permissions.
+
+---
+
+### Option 2: Clone and Install
+
 ### Step 1: Clone Repository
 ```bash
 git clone https://github.com/H0sin/digi_installer.git
