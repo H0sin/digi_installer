@@ -21,3 +21,13 @@ rabbitmq.be-unavailable.com {
 redis.be-unavailable.com {
   reverse_proxy redisinsight:8001
 }
+
+# MinIO Console UI
+minio.be-unavailable.com {
+  reverse_proxy minio:9001
+}
+
+# MinIO S3 API for public file URLs
+files.be-unavailable.com {
+  reverse_proxy minio:9000
+}

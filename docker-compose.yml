@@ -6,7 +6,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-
     environment:
       - ACME_EMAIL=${TRAEFIK_ACME_EMAIL}
     volumes:
@@ -22,7 +21,8 @@ services:
       - rabbitmq
       - redisinsight
       - portainer
-
+      - minio
+      - minio-init
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -65,10 +65,19 @@ services:
       - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
       - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      # Storage (MinIO)
+      - Storage__Provider=${STORAGE_PROVIDER}
+      - Storage__PublicBaseUrl=${MINIO_PUBLIC_URL}
+      - Storage__Minio__Endpoint=${MINIO_ENDPOINT}
+      - Storage__Minio__AccessKey=${MINIO_ACCESS_KEY}
+      - Storage__Minio__SecretKey=${MINIO_SECRET_KEY}
+      - Storage__Minio__Bucket=${MINIO_BUCKET}
+      - Storage__Minio__Region=${MINIO_REGION}
+      - Storage__Minio__UseSSL=${MINIO_USE_SSL}
     networks:
       - digitalbot_web
       - digitalbot_internal
-      
+    
     depends_on:
       postgres:
         condition: service_healthy
@@ -148,6 +157,15 @@ services:
       - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
       - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      # Storage (MinIO)
+      - Storage__Provider=${STORAGE_PROVIDER}
+      - Storage__PublicBaseUrl=${MINIO_PUBLIC_URL}
+      - Storage__Minio__Endpoint=${MINIO_ENDPOINT}
+      - Storage__Minio__AccessKey=${MINIO_ACCESS_KEY}
+      - Storage__Minio__SecretKey=${MINIO_SECRET_KEY}
+      - Storage__Minio__Bucket=${MINIO_BUCKET}
+      - Storage__Minio__Region=${MINIO_REGION}
+      - Storage__Minio__UseSSL=${MINIO_USE_SSL}
     networks:
       - digitalbot_internal
       - digitalbot_web
@@ -158,8 +176,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-        
-  worker:    
+  
+  worker:
     image: ${ORDER_WORKER_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-order-worker
     restart: unless-stopped
@@ -182,6 +200,15 @@ services:
       - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
       - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      # Storage (MinIO)
+      - Storage__Provider=${STORAGE_PROVIDER}
+      - Storage__PublicBaseUrl=${MINIO_PUBLIC_URL}
+      - Storage__Minio__Endpoint=${MINIO_ENDPOINT}
+      - Storage__Minio__AccessKey=${MINIO_ACCESS_KEY}
+      - Storage__Minio__SecretKey=${MINIO_SECRET_KEY}
+      - Storage__Minio__Bucket=${MINIO_BUCKET}
+      - Storage__Minio__Region=${MINIO_REGION}
+      - Storage__Minio__UseSSL=${MINIO_USE_SSL}
     networks:
       - digitalbot_internal
       - digitalbot_web
@@ -192,7 +219,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-             
+  
   jobs:
     image: ${JOBS_IMAGE}
     container_name: ${COMPOSE_PROJECT_NAME}-jobs
@@ -216,6 +243,15 @@ services:
       - TelegramLogger__Topics__Critical= ${TELEGRAMLOGGER__TOPICS__CRITICAL},
       - TelegramLogger__Topics__Orders= ${TELEGRAMLOGGER__TOPICS__ORDERS},
       - TelegramLogger__Topics__Payments= ${TELEGRAMLOGGER__TOPICS__PAYMENTS}
+      # Storage (MinIO)
+      - Storage__Provider=${STORAGE_PROVIDER}
+      - Storage__PublicBaseUrl=${MINIO_PUBLIC_URL}
+      - Storage__Minio__Endpoint=${MINIO_ENDPOINT}
+      - Storage__Minio__AccessKey=${MINIO_ACCESS_KEY}
+      - Storage__Minio__SecretKey=${MINIO_SECRET_KEY}
+      - Storage__Minio__Bucket=${MINIO_BUCKET}
+      - Storage__Minio__Region=${MINIO_REGION}
+      - Storage__Minio__UseSSL=${MINIO_USE_SSL}
     networks:
       - digitalbot_internal
       - digitalbot_web
@@ -247,8 +283,45 @@ services:
     networks:
       - digitalbot_web
       - digitalbot_internal
+  
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_SERVER_URL: ${MINIO_SERVER_URL}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9002:9000" # API (host:container)
+      - "9003:9001" # Console (host:container)
+    volumes:
+      - minio-data:/data
+    networks:
+      - digitalbot_internal
+      - digitalbot_web
+
+  # 🪣 MinIO Client (one-shot) to create bucket and set public read policy
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} &&
+      /usr/bin/mc mb -p local/${MINIO_BUCKET} || true &&
+      /usr/bin/mc anonymous set download local/${MINIO_BUCKET} || true &&
+      echo 'MinIO bucket initialized.'
+      "
+    networks:
+      - digitalbot_internal
 
 volumes:
+  minio-data:
+    name: minio_data
   postgres-data:
     name: postgres_data
   caddy-data:
@@ -257,6 +330,7 @@ volumes:
     name: caddy_config
   portainer-data:
     name: portainer_data
+
 networks:
   digitalbot_web: {}
   digitalbot_internal:
