@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ============== UI helpers ==============
+#############################################
+# Digital Bot Installer (full)
+# - Workdir prompt (or --workdir /path)
+# - Separate REGISTRY vs PROJECT DOMAIN
+# - Optional Docker registry login up front
+# - Scaling prompts during install
+# - Dynamic Caddy enable
+# - Multi-node ready (external DB/MQ/Redis)
+# - Backup helper (Postgres → ZIP → Telegram)
+#############################################
+
 BOLD='\033[1m'; RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 hdr(){ echo -e "\n${BOLD}${BLUE}═══════════════════════════════════════════════════════${NC}\n${BOLD}${BLUE}  $*${NC}\n${BOLD}${BLUE}═══════════════════════════════════════════════════════${NC}\n"; }
 info(){ echo -e "${BLUE}[INFO]${NC} $*"; }
@@ -9,29 +19,23 @@ ok(){ echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn(){ echo -e "${YELLOW}[WARN]${NC} $*"; }
 err(){ echo -e "${RED}[ERROR]${NC} $*"; }
 
-# ============== Workdir handling (supports bash <(curl …)) ==============
+# ---------------- Workdir handling ----------------
 DEFAULT_WORKDIR="/opt/digitalbot"
 WORKDIR_ARG=""
-# allow leading --workdir before command verb (e.g., --install)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --workdir) WORKDIR_ARG="${2:-}"; shift 2 ;;
     *) break ;;
   esac
 done
-
-choose_workdir() {
+choose_workdir(){
   hdr "Install / Run Directory"
-  local dflt="${DEFAULT_WORKDIR}" wd
-  read -p "Install directory [${dflt}]: " wd
-  wd=${wd:-$dflt}
+  local dflt="$DEFAULT_WORKDIR" wd
+  read -p "Install directory [${dflt}]: " wd; wd=${wd:-$dflt}
   sudo mkdir -p "$wd" 2>/dev/null || mkdir -p "$wd"
   if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u)":"$(id -g)" "$wd" 2>/dev/null || true; fi
-  SCRIPT_DIR="$(cd "$wd" && pwd -P)"
-  export INSTALLER_WORKDIR="$SCRIPT_DIR"
+  SCRIPT_DIR="$(cd "$wd" && pwd -P)"; export INSTALLER_WORKDIR="$SCRIPT_DIR"
 }
-
-# Determine SCRIPT_DIR robustly (works for /dev/fd when piped)
 if [[ -n "${WORKDIR_ARG:-}" ]]; then
   mkdir -p "$WORKDIR_ARG"; SCRIPT_DIR="$(cd "$WORKDIR_ARG" && pwd -P)"; export INSTALLER_WORKDIR="$SCRIPT_DIR"
 elif [[ -n "${INSTALLER_WORKDIR:-}" ]]; then
@@ -44,20 +48,13 @@ else
   fi
 fi
 
-ENV_FILE="${SCRIPT_DIR}/.env"
-CADDY_FILE="${SCRIPT_DIR}/Caddyfile"
-COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
-OPS_DIR="${SCRIPT_DIR}/ops"
-BACKUP_SCRIPT="${OPS_DIR}/backup.sh"
-mkdir -p "$OPS_DIR"
+ENV_FILE="$SCRIPT_DIR/.env"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+CADDY_FILE="$SCRIPT_DIR/Caddyfile"
+OPS_DIR="$SCRIPT_DIR/ops"; mkdir -p "$OPS_DIR"
+BACKUP_SCRIPT="$OPS_DIR/backup.sh"
 
-# ============== Basics ==============
-require_rootless_sudo(){
-  if [[ $EUID -eq 0 ]]; then
-    warn "Running as root. It's safer to run as a normal user with sudo."
-  fi
-}
-
+# ---------------- Prereqs ----------------
 ensure_packages(){
   hdr "Prerequisites"
   if ! command -v curl >/dev/null 2>&1; then
@@ -73,21 +70,15 @@ ensure_packages(){
     sudo apt-get update -y && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     sudo usermod -aG docker "$USER" || true
   fi
-  if ! docker compose version >/dev/null 2>&1; then
-    err "Docker Compose plugin not detected."; exit 1
-  fi
+  if ! docker compose version >/dev/null 2>&1; then err "Docker Compose plugin not detected"; exit 1; fi
   ok "Prerequisites ready"
 }
 
-# ============== Backup of existing config ==============
+# ---------------- Backup old config ----------------
 backup_existing(){
   if [[ -f "$ENV_FILE" || -f "$COMPOSE_FILE" || -f "$CADDY_FILE" ]]; then
     hdr "Backup existing config"
-    local root="$SCRIPT_DIR"
-    mkdir -p "$root" 2>/dev/null || root="${HOME:-/tmp}/digitalbot"
-    mkdir -p "$root"
-    local BACKUP_DIR="${root}/backup_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
+    local BACKUP_DIR="$SCRIPT_DIR/backup_$(date +%Y%m%d_%H%M%S)"; mkdir -p "$BACKUP_DIR"
     [[ -f "$ENV_FILE" ]] && cp "$ENV_FILE" "$BACKUP_DIR/.env"
     [[ -f "$COMPOSE_FILE" ]] && cp "$COMPOSE_FILE" "$BACKUP_DIR/docker-compose.yml"
     [[ -f "$CADDY_FILE" ]] && cp "$CADDY_FILE" "$BACKUP_DIR/Caddyfile"
@@ -95,15 +86,34 @@ backup_existing(){
   fi
 }
 
-# ============== Minimal generators (placeholders – adapt to your images) ==============
-generate_env(){
-  hdr "Generate .env"
-  read -p "Project name [digitalbot]: " PROJECT_NAME; PROJECT_NAME=${PROJECT_NAME:-digitalbot}
+# ---------------- Registry login (optional) ----------------
+registry_login_prompt(){
+  hdr "Docker Registry"
+  read -p "Use a PRIVATE registry? (y/N): " USE_REG; USE_REG=${USE_REG:-N}
+  if [[ "$USE_REG" =~ ^[yY]$ ]]; then
+    read -p "Registry URL (e.g. registry.example.com) [docker.io]: " REGISTRY_URL; REGISTRY_URL=${REGISTRY_URL:-docker.io}
+    read -p "Registry username: " REG_USER
+    read -s -p "Registry password: " REG_PASS; echo
+    echo "$REG_PASS" | docker login "$REGISTRY_URL" -u "$REG_USER" --password-stdin
+    ok "Logged in to $REGISTRY_URL"
+  else
+    REGISTRY_URL=""; REG_USER=""; REG_PASS=""
+    info "Using public images or already-logged-in registry"
+  fi
+}
+
+# ---------------- Collect config ----------------
+collect_config(){
+  hdr "Base Configuration"
+  read -p "Project name [digitalbot]: " COMPOSE_PROJECT_NAME; COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-digitalbot}
+
+  # Domains for app — separate from REGISTRY
   read -p "Main domain (e.g. example.com): " DOMAIN; [[ -z "$DOMAIN" ]] && { err "Domain required"; exit 1; }
   read -p "Client subdomain [client]: " CLIENT_SUB; CLIENT_SUB=${CLIENT_SUB:-client}
-  CLIENT_APP_DOMAIN="${CLIENT_SUB}.${DOMAIN}"
+  CLIENT_APP_DOMAIN="$CLIENT_SUB.$DOMAIN"
 
-  # credentials
+  # Service credentials
+  hdr "Credentials"
   read -p "Postgres user [postgres]: " POSTGRES_USER; POSTGRES_USER=${POSTGRES_USER:-postgres}
   read -s -p "Postgres password: " POSTGRES_PASSWORD; echo; [[ -z "$POSTGRES_PASSWORD" ]] && { err "Postgres password required"; exit 1; }
   read -p "Postgres DB [digitalbot_db]: " POSTGRES_DB; POSTGRES_DB=${POSTGRES_DB:-digitalbot_db}
@@ -113,43 +123,92 @@ generate_env(){
 
   read -s -p "Redis password: " REDIS_PASSWORD; echo; [[ -z "$REDIS_PASSWORD" ]] && { err "Redis password required"; exit 1; }
 
-  read -p "Enable Caddy reverse proxy? (y/N): " EN_CADDY; EN_CADDY=${EN_CADDY:-N}
+  # Multi-node (external data services)
+  hdr "Data Services Location"
+  read -p "Use EXTERNAL Postgres/Rabbit/Redis hosts? (y/N): " USE_EXT; USE_EXT=${USE_EXT:-N}
+  if [[ "$USE_EXT" =~ ^[yY]$ ]]; then
+    read -p "POSTGRES_HOST [postgres]: " POSTGRES_HOST; POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+    read -p "RABBITMQ_HOST [rabbitmq]: " RABBITMQ_HOST; RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
+    read -p "REDIS_HOST [redis]: " REDIS_HOST; REDIS_HOST=${REDIS_HOST:-redis}
+    RUN_LOCAL_DATA="false"
+  else
+    POSTGRES_HOST="postgres"; RABBITMQ_HOST="rabbitmq"; REDIS_HOST="redis"; RUN_LOCAL_DATA="true"
+  fi
 
+  # Images — built from REGISTRY_URL (if set) or ask explicitly
+  hdr "Images"
+  local REG_PREFIX=""; [[ -n "${REGISTRY_URL:-}" && "$REGISTRY_URL" != "docker.io" ]] && REG_PREFIX="$REGISTRY_URL/"
+  read -p "Webapp image [${REG_PREFIX}digital-web:latest]: " WEBAPP_IMAGE; WEBAPP_IMAGE=${WEBAPP_IMAGE:-${REG_PREFIX}digital-web:latest}
+  read -p "Client image [${REG_PREFIX}digital-client:latest]: " CLIENT_APP_IMAGE; CLIENT_APP_IMAGE=${CLIENT_APP_IMAGE:-${REG_PREFIX}digital-client:latest}
+  read -p "Processor image [${REG_PREFIX}digital-processer:latest]: " PROCESSOR_IMAGE; PROCESSOR_IMAGE=${PROCESSOR_IMAGE:-${REG_PREFIX}digital-processer:latest}
+  read -p "Worker image [${REG_PREFIX}digital-order-worker:latest]: " ORDER_WORKER_IMAGE; ORDER_WORKER_IMAGE=${ORDER_WORKER_IMAGE:-${REG_PREFIX}digital-order-worker:latest}
+  read -p "Jobs image [${REG_PREFIX}digital-jobs:latest]: " JOBS_IMAGE; JOBS_IMAGE=${JOBS_IMAGE:-${REG_PREFIX}digital-jobs:latest}
+
+  # Caddy
+  hdr "Edge / Caddy"
+  read -p "Enable Caddy on THIS node? (y/N): " ENABLE_CADDY; ENABLE_CADDY=${ENABLE_CADDY:-N}
+
+  # Sizing
+  hdr "Sizing / Autoscale"
+  echo "Provide real numbers if you have them; otherwise press Enter to accept safe defaults."
+  read -p "Total users (approx) [100000]: " U; U=${U:-100000}
+  read -p "Active % (simultaneous peak) [10]: " A; A=${A:-10}
+  read -p "Backend peak RPS after cache [300]: " RPS; RPS=${RPS:-300}
+  read -p "Avg cluster CPU per request (millicores) [8]: " MC; MC=${MC:-8}
+  # simple heuristic
+  local ACTIVE=$(( U * A / 100 ))
+  local need_mc=$(( RPS * MC ))
+  local web_repl=$(( (need_mc + 800) / 800 ))  # 800m ≈ 0.8 vCPU target per pod
+  [[ $web_repl -lt 2 ]] && web_repl=2
+  local proc_repl=$(( (ACTIVE/2000) + 1 ))
+  local worker_repl=$(( (ACTIVE/3000) + 1 ))
+
+  read -p "Webapp replicas [${web_repl}]: " WEB_REPL; WEB_REPL=${WEB_REPL:-$web_repl}
+  read -p "Processor replicas [${proc_repl}]: " PROCESSER_REPLICAS; PROCESSER_REPLICAS=${PROCESSER_REPLICAS:-$proc_repl}
+  read -p "Worker replicas [${worker_repl}]: " ORDER_WORKER_REPLICAS; ORDER_WORKER_REPLICAS=${ORDER_WORKER_REPLICAS:-$worker_repl}
+
+  # Write .env
+  hdr "Write .env"
   cat >"$ENV_FILE"<<EOF
-COMPOSE_PROJECT_NAME=${PROJECT_NAME}
+COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
 
 # Domains
 DOMAIN=${DOMAIN}
 CLIENT_APP_DOMAIN=${CLIENT_APP_DOMAIN}
 
-# Images (edit if you have a private registry/tags)
-WEBAPP_IMAGE=docker.${DOMAIN}/digital-web:latest
-CLIENT_APP_IMAGE=docker.${DOMAIN}/digital-client:latest
-PROCESSOR_IMAGE=docker.${DOMAIN}/digital-processer:latest
-ORDER_WORKER_IMAGE=docker.${DOMAIN}/digital-order-worker:latest
-JOBS_IMAGE=docker.${DOMAIN}/digital-jobs:latest
+# Images
+WEBAPP_IMAGE=${WEBAPP_IMAGE}
+CLIENT_APP_IMAGE=${CLIENT_APP_IMAGE}
+PROCESSOR_IMAGE=${PROCESSOR_IMAGE}
+ORDER_WORKER_IMAGE=${ORDER_WORKER_IMAGE}
+JOBS_IMAGE=${JOBS_IMAGE}
 
-# DB
+# Data creds
 POSTGRES_USER=${POSTGRES_USER}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 POSTGRES_DB=${POSTGRES_DB}
-
-# MQ/Cache
 RABBITMQ_USER=${RABBITMQ_USER}
 RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
 REDIS_PASSWORD=${REDIS_PASSWORD}
 
-# Caddy
-ENABLE_CADDY=${EN_CADDY}
+# Hosts (support multi-node)
+POSTGRES_HOST=${POSTGRES_HOST}
+RABBITMQ_HOST=${RABBITMQ_HOST}
+REDIS_HOST=${REDIS_HOST}
+RUN_LOCAL_DATA=${RUN_LOCAL_DATA}
 
-# Sane defaults
-PROCESSER_REPLICAS=2
-ORDER_WORKER_REPLICAS=2
+# Caddy
+ENABLE_CADDY=${ENABLE_CADDY}
+
+# Replicas
+WEBAPP_REPLICAS=${WEB_REPL}
+PROCESSER_REPLICAS=${PROCESSER_REPLICAS}
+ORDER_WORKER_REPLICAS=${ORDER_WORKER_REPLICAS}
 EOF
-  chmod 600 "$ENV_FILE"
-  ok ".env written → $ENV_FILE"
+  chmod 600 "$ENV_FILE"; ok ".env ready → $ENV_FILE"
 }
 
+# ---------------- Compose generator ----------------
 generate_compose(){
   hdr "Generate docker-compose.yml"
   cat >"$COMPOSE_FILE"<<'EOF'
@@ -159,11 +218,11 @@ services:
     image: ${WEBAPP_IMAGE}
     restart: unless-stopped
     environment:
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      - RabbitMq__HOST=rabbitmq
+      - ConnectionStrings__DefaultConnection=Host=${POSTGRES_HOST};Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - RabbitMq__HOST=${RABBITMQ_HOST}
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
-      - Redis__Host=redis
+      - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
     depends_on:
@@ -174,6 +233,7 @@ services:
       redis:
         condition: service_started
     deploy:
+      replicas: ${WEBAPP_REPLICAS}
       resources:
         limits: { cpus: "1.0", memory: "1024M" }
     networks: [ digitalbot_internal, digitalbot_web ]
@@ -190,11 +250,11 @@ services:
     image: ${PROCESSOR_IMAGE}
     restart: unless-stopped
     environment:
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      - RabbitMq__HOST=rabbitmq
+      - ConnectionStrings__DefaultConnection=Host=${POSTGRES_HOST};Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - RabbitMq__HOST=${RABBITMQ_HOST}
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
-      - Redis__Host=redis
+      - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
     depends_on:
@@ -211,11 +271,11 @@ services:
     image: ${ORDER_WORKER_IMAGE}
     restart: unless-stopped
     environment:
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      - RabbitMq__HOST=rabbitmq
+      - ConnectionStrings__DefaultConnection=Host=${POSTGRES_HOST};Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - RabbitMq__HOST=${RABBITMQ_HOST}
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
-      - Redis__Host=redis
+      - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
     depends_on:
@@ -232,11 +292,11 @@ services:
     image: ${JOBS_IMAGE}
     restart: unless-stopped
     environment:
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      - RabbitMq__HOST=rabbitmq
+      - ConnectionStrings__DefaultConnection=Host=${POSTGRES_HOST};Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - RabbitMq__HOST=${RABBITMQ_HOST}
       - RabbitMq__Username=${RABBITMQ_USER}
       - RabbitMq__Password=${RABBITMQ_PASSWORD}
-      - Redis__Host=redis
+      - Redis__Host=${REDIS_HOST}
       - Redis__Password=${REDIS_PASSWORD}
       - ASPNETCORE_ENVIRONMENT=Production
     depends_on:
@@ -245,6 +305,7 @@ services:
       redis: { condition: service_started }
     networks: [ digitalbot_internal ]
 
+  # Data services (only when RUN_LOCAL_DATA=true)
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -260,6 +321,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+    deploy:
+      replicas: ${RUN_LOCAL_DATA} == 'true' ? 1 : 0
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -273,6 +336,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    deploy:
+      replicas: ${RUN_LOCAL_DATA} == 'true' ? 1 : 0
 
   redis:
     image: redis:7-alpine
@@ -284,6 +349,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    deploy:
+      replicas: ${RUN_LOCAL_DATA} == 'true' ? 1 : 0
 
   caddy:
     image: caddy:2
@@ -299,7 +366,7 @@ services:
     depends_on:
       - webapp
       - client-app
-    profiles: ["caddy"]   # only enabled when we want it
+    profiles: ["caddy"]
 
 volumes:
   postgres-data:
@@ -312,13 +379,15 @@ networks:
     driver: bridge
     internal: true
 EOF
-  ok "docker-compose.yml written → $COMPOSE_FILE"
+  ok "docker-compose.yml → $COMPOSE_FILE"
 }
 
-generate_caddy(){
-  if [[ "$(grep -E '^ENABLE_CADDY=.*' "$ENV_FILE" | cut -d= -f2)" == "y" || "$(grep -E '^ENABLE_CADDY=.*' "$ENV_FILE" | cut -d= -f2)" == "Y" ]]; then
+# ---------------- Caddyfile ----------------
+write_caddy(){
+  if [[ "$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2)" =~ ^[yY]$ ]]; then
     hdr "Generate Caddyfile"
-    cat >"$CADDY_FILE"<<EOF
+    # shellcheck disable=SC2016
+    cat >"$CADDY_FILE"<<'EOF'
 {$DOMAIN} {
   reverse_proxy webapp:8080 {
     header_up X-Real-IP {http.request.header.CF-Connecting-IP}
@@ -328,65 +397,20 @@ generate_caddy(){
   reverse_proxy client-app:80
 }
 EOF
-    ok "Caddyfile written → $CADDY_FILE"
+    ok "Caddyfile → $CADDY_FILE"
   else
-    warn "Caddy disabled by config (ENABLE_CADDY!=y)."
+    warn "Caddy disabled"
   fi
 }
 
-# ============== Deploy / Update / Scale ==============
-compose_cmd(){
-  # enable caddy profile only when ENABLE_CADDY=y
-  local profiles=()
-  if [[ -f "$ENV_FILE" ]]; then
-    local en="$(grep -E '^ENABLE_CADDY=.*' "$ENV_FILE" | cut -d= -f2 || true)"
-    if [[ "$en" =~ ^[yY]$ ]]; then profiles+=( "--profile" "caddy" ); fi
-  fi
-  docker compose "${profiles[@]}" -f "$COMPOSE_FILE" "$@"
-}
-
-do_install(){
-  require_rootless_sudo
-  ensure_packages
-  backup_existing
-  generate_env
-  generate_compose
-  generate_caddy
-  hdr "Deploy"
-  compose_cmd pull
-  compose_cmd up -d
-  ok "Stack is up. Directory: $SCRIPT_DIR"
-}
-
-do_update(){
-  ensure_packages
-  hdr "Update"
-  compose_cmd pull
-  compose_cmd up -d
-  ok "Updated."
-}
-
-do_scale(){
-  hdr "Scale"
-  read -p "processor replicas [2]: " P; P=${P:-2}
-  read -p "worker replicas [2]: " W; W=${W:-2}
-  sed -i "s/^PROCESSER_REPLICAS=.*/PROCESSER_REPLICAS=${P}/" "$ENV_FILE" || true
-  sed -i "s/^ORDER_WORKER_REPLICAS=.*/ORDER_WORKER_REPLICAS=${W}/" "$ENV_FILE" || true
-  compose_cmd up -d --scale processor="$P" --scale worker="$W"
-  ok "Scaled. processor=${P} worker=${W}"
-}
-
-# ============== Postgres backup → ZIP → (optional) Telegram ==============
+# ---------------- Backup helper ----------------
 write_backup_script(){
   cat >"$BACKUP_SCRIPT"<<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
-ENV_FILE="$(dirname "$0")/../.env"
-source "$ENV_FILE"
-
+ENV_FILE="$(dirname "$0")/../.env"; source "$ENV_FILE"
 STAMP=$(date +%Y%m%d_%H%M%S)
-OUTDIR="$(dirname "$0")/../backups"
-mkdir -p "$OUTDIR"
+OUTDIR="$(dirname "$0")/../backups"; mkdir -p "$OUTDIR"
 FILE="${OUTDIR}/pg_${POSTGRES_DB}_${STAMP}.sql.gz"
 
 echo "[INFO] dumping ${POSTGRES_DB}…"
@@ -394,7 +418,6 @@ docker compose -f "$(dirname "$0")/../docker-compose.yml" exec -T postgres \
   pg_dump -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip > "$FILE"
 
 echo "[OK] dump: $FILE"
-
 if [[ "${TELEGRAM_BOT_TOKEN:-}" != "" && "${TELEGRAM_CHAT_ID:-}" != "" ]]; then
   echo "[INFO] sending to Telegram…"
   curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
@@ -405,7 +428,6 @@ if [[ "${TELEGRAM_BOT_TOKEN:-}" != "" && "${TELEGRAM_CHAT_ID:-}" != "" ]]; then
 fi
 EOS
   chmod +x "$BACKUP_SCRIPT"
-  ok "Backup script → $BACKUP_SCRIPT"
 }
 
 configure_backup(){
@@ -422,30 +444,61 @@ configure_backup(){
   read -p "Create cron job (every 6h)? (y/N): " C; C=${C:-N}
   if [[ "$C" =~ ^[yY]$ ]]; then
     (crontab -l 2>/dev/null; echo "0 */6 * * * ${BACKUP_SCRIPT} >/dev/null 2>&1") | crontab -
-    ok "Cron installed: every 6h."
+    ok "Cron installed: every 6h"
   fi
 }
 
-# ============== Registry login ==============
-do_registry(){
-  hdr "Docker Registry Login"
-  read -p "Registry URL (e.g. docker.example.com) [docker.io]: " R; R=${R:-docker.io}
-  read -p "Username: " U
-  read -s -p "Password: " P; echo
-  echo "$P" | docker login "$R" -u "$U" --password-stdin
-  ok "Logged in to $R"
+# ---------------- Compose wrapper ----------------
+compose_cmd(){
+  local profiles=()
+  if [[ -f "$ENV_FILE" ]]; then
+    local en="$(grep -E '^ENABLE_CADDY=' "$ENV_FILE" | cut -d= -f2 || true)"
+    if [[ "$en" =~ ^[yY]$ ]]; then profiles+=("--profile" "caddy"); fi
+  fi
+  docker compose -f "$COMPOSE_FILE" "${profiles[@]}" "$@"
 }
 
-# ============== Menu / CLI ==============
+# ---------------- Actions ----------------
+do_install(){
+  ensure_packages
+  backup_existing
+  registry_login_prompt
+  collect_config
+  generate_compose
+  write_caddy
+  hdr "Deploy"
+  compose_cmd pull
+  compose_cmd up -d
+  ok "Stack up at $SCRIPT_DIR"
+}
+
+do_update(){ hdr "Update"; ensure_packages; compose_cmd pull; compose_cmd up -d; ok "Updated"; }
+
+do_scale(){
+  hdr "Scale"
+  source "$ENV_FILE"
+  read -p "Webapp replicas [${WEBAPP_REPLICAS:-2}]: " WR; WR=${WR:-${WEBAPP_REPLICAS:-2}}
+  read -p "Processor replicas [${PROCESSER_REPLICAS:-2}]: " PR; PR=${PR:-${PROCESSER_REPLICAS:-2}}
+  read -p "Worker replicas [${ORDER_WORKER_REPLICAS:-2}]: " OR; OR=${OR:-${ORDER_WORKER_REPLICAS:-2}}
+  sed -i "s/^WEBAPP_REPLICAS=.*/WEBAPP_REPLICAS=${WR}/" "$ENV_FILE" || true
+  sed -i "s/^PROCESSER_REPLICAS=.*/PROCESSER_REPLICAS=${PR}/" "$ENV_FILE" || true
+  sed -i "s/^ORDER_WORKER_REPLICAS=.*/ORDER_WORKER_REPLICAS=${OR}/" "$ENV_FILE" || true
+  compose_cmd up -d --scale webapp="$WR" --scale processor="$PR" --scale worker="$OR"
+  ok "Scaled: webapp=${WR} processor=${PR} worker=${OR}"
+}
+
+do_registry(){ hdr "Registry login"; read -p "Registry URL [docker.io]: " R; R=${R:-docker.io}; read -p "Username: " U; read -s -p "Password: " P; echo; echo "$P" | docker login "$R" -u "$U" --password-stdin; ok "Logged in to $R"; }
+
+# ---------------- Menu / CLI ----------------
 show_menu(){
   hdr "Digital Bot Installer"
   cat <<MENU
 Workdir: ${SCRIPT_DIR}
 
-1) Install / Deploy
+1) Install / Deploy (with prompts)
 2) Update (pull + up)
-3) Scale (processor/worker)
-4) Backup setup (Postgres → ZIP → Telegram)
+3) Scale (change replicas)
+4) Backup setup (PG → ZIP → Telegram)
 5) Registry login
 q) Quit
 MENU
@@ -457,11 +510,10 @@ MENU
     4) configure_backup ;;
     5) do_registry ;;
     q|Q) exit 0 ;;
-    *) err "Invalid choice"; exit 1 ;;
+    *) err "Invalid choice" ;;
   esac
 }
 
-# Parse command verb (after possible --workdir)
 case "${1:-}" in
   --install|install) shift || true; do_install ;;
   --update|update) shift || true; do_update ;;
