@@ -485,7 +485,41 @@ EOF
 }
 
 # ---------------- Backup helper ----------------
-write_backup_script
+write_backup_script(){
+  cat >"$BACKUP_SCRIPT"<<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+ENV_FILE="$(dirname "$0")/../.env"; source "$ENV_FILE"
+STAMP=$(date +%Y%m%d_%H%M%S)
+OUTDIR="$(dirname "$0")/../backups"; mkdir -p "$OUTDIR"
+FILE="${OUTDIR}/pg_${POSTGRES_DB}_${STAMP}.sql.gz"
+
+if [[ "${RUN_LOCAL_DATA:-y}" =~ ^[yY]$ ]]; then
+  echo "[INFO] dumping local ${POSTGRES_DB} via compose exec…"
+  docker compose -f "$(dirname "$0")/../docker-compose.yml" exec -T postgres \
+    pg_dump -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip > "$FILE"
+else
+  echo "[INFO] dumping remote ${POSTGRES_DB} from host ${POSTGRES_HOST}…"
+  # use postgres:16 image with host networking to reach external DB
+  docker run --rm --network host \
+    -e PGPASSWORD="${POSTGRES_PASSWORD}" \
+    postgres:16-alpine \
+    sh -c 'pg_dump -h '"${POSTGRES_HOST}"' -U '"${POSTGRES_USER}"' '"${POSTGRES_DB}"'' | gzip > "$FILE"
+fi
+
+echo "[OK] dump: $FILE"
+if [[ "${TELEGRAM_BOT_TOKEN:-}" != "" && "${TELEGRAM_CHAT_ID:-}" != "" ]]; then
+  echo "[INFO] sending to Telegram…"
+  curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+    -F "chat_id=${TELEGRAM_CHAT_ID}" \
+    -F "document=@${FILE}" \
+    -F "caption=DB backup ${STAMP}" >/dev/null
+  echo "[OK] sent."
+fi
+EOS
+  chmod +x "$BACKUP_SCRIPT"
+}
+
 
 configure_backup(){
   hdr "Backup setup"
