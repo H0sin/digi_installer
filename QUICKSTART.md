@@ -2,6 +2,38 @@
 
 ## Installation in 5 Minutes
 
+### Option 1: One-Line Installation (Fastest)
+
+Install directly from GitHub with a single command:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+Or using wget:
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+**Requirements:**
+- Run as a regular user (not root)
+- Requires `sudo` privileges for Docker installation and service management
+- Ubuntu 20.04+ or Debian-based systems
+
+**For Private Repositories:**
+```bash
+# Using Personal Access Token
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/H0sin/digi_installer.git
+
+# Or using SSH
+git clone git@github.com:H0sin/digi_installer.git
+```
+
+---
+
+### Option 2: Clone and Install
+
 ### Step 1: Clone Repository
 ```bash
 git clone https://github.com/H0sin/digi_installer.git

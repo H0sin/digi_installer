@@ -35,6 +35,39 @@ The application consists of the following services with their respective domains
 
 ## Quick Start
 
+### One-Line Installation (Fastest)
+
+Install with a single command:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+Or using wget:
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+**Requirements:**
+- The script requires `sudo` privileges for installing Docker and managing services
+- Run as a regular user (not root) - the script will use `sudo` when needed
+- Works on Ubuntu 20.04+ and Debian-based systems
+
+**For private repositories**, authenticate first:
+
+```bash
+# Using Personal Access Token
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/H0sin/digi_installer.git
+cd digi_installer
+./install.sh
+
+# Or using SSH
+git clone git@github.com:H0sin/digi_installer.git
+cd digi_installer
+./install.sh
+```
+
 ### Automated Installation (Recommended)
 
 Run the interactive installation script:
