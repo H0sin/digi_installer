@@ -130,54 +130,58 @@ ensure_packages(){
 }
 
 # ---------------- Backup old config ----------------
-# keep at most N backups; backup only when content changed
+# replace the entire backup_existing() with this
 KEEP_BACKUPS=${KEEP_BACKUPS:-3}
 
 backup_existing(){
-  local did_any=0
-  local src_env="$ENV_FILE" src_comp="$COMPOSE_FILE" src_caddy="$CADDY_FILE"
-  # اگر هیچ فایلی وجود ندارد، بکاپ نگیر
-  [[ ! -f "$src_env" && ! -f "$src_comp" && ! -f "$src_caddy" ]] && { return 0; }
+  local need_backup=0
+  local last_dir=""
+  local last_env="" last_comp="" last_caddy=""
 
-  # محاسبه هش فعلی محتوا
-  local cur_hash
-  cur_hash="$( ( [[ -f "$src_env" ]] && sha256sum "$src_env"; \
-                 [[ -f "$src_comp" ]] && sha256sum "$src_comp"; \
-                 [[ -f "$src_caddy" ]] && sha256sum "$src_caddy" ) | awk '{print $1}' | sha256sum | awk '{print $1}' )"
-
-  # پیدا کردن آخرین بکاپ و مقایسه هش
-  local last_dir last_hash=""
+  # آخرین بکاپ را پیدا کن
   last_dir="$(ls -1dt "$SCRIPT_DIR"/backup_* 2>/dev/null | head -n1 || true)"
   if [[ -n "$last_dir" && -d "$last_dir" ]]; then
-    last_hash="$( ( [[ -f "$last_dir/.env" ]] && sha256sum "$last_dir/.env"; \
-                    [[ -f "$last_dir/docker-compose.yml" ]] && sha256sum "$last_dir/docker-compose.yml"; \
-                    [[ -f "$last_dir/Caddyfile" ]] && sha256sum "$last_dir/Caddyfile" ) | awk '{print $1}' | sha256sum | awk '{print $1}' )"
+    [[ -f "$last_dir/.env" ]]               && last_env="$last_dir/.env"
+    [[ -f "$last_dir/docker-compose.yml" ]] && last_comp="$last_dir/docker-compose.yml"
+    [[ -f "$last_dir/Caddyfile" ]]          && last_caddy="$last_dir/Caddyfile"
   fi
 
-  # فقط اگر تغییر کرده بکاپ بساز
-  if [[ "$cur_hash" != "$last_hash" ]]; then
+  # اگر هیچ فایل فعلی‌ای وجود ندارد، بکاپ نگیر
+  if [[ ! -f "$ENV_FILE" && ! -f "$COMPOSE_FILE" && ! -f "$CADDY_FILE" ]]; then
+    return 0
+  fi
+
+  # تصمیم بگیر آیا نسبت به آخرین بکاپ تغییر داریم یا نه
+  if [[ -f "$ENV_FILE" ]]; then
+    if [[ ! -f "$last_env" ]] || ! cmp -s "$ENV_FILE" "$last_env"; then need_backup=1; fi
+  fi
+  if [[ -f "$COMPOSE_FILE" ]]; then
+    if [[ ! -f "$last_comp" ]] || ! cmp -s "$COMPOSE_FILE" "$last_comp"; then need_backup=1; fi
+  fi
+  if [[ -f "$CADDY_FILE" ]]; then
+    if [[ ! -f "$last_caddy" ]] || ! cmp -s "$CADDY_FILE" "$last_caddy"; then need_backup=1; fi
+  fi
+
+  if (( need_backup )); then
     hdr "Backup existing config"
     local BACKUP_DIR="$SCRIPT_DIR/backup_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$BACKUP_DIR"
-    [[ -f "$src_env" ]]  && cp "$src_env"  "$BACKUP_DIR/.env"               && did_any=1
-    [[ -f "$src_comp" ]] && cp "$src_comp" "$BACKUP_DIR/docker-compose.yml" && did_any=1
-    [[ -f "$src_caddy" ]]&& cp "$src_caddy" "$BACKUP_DIR/Caddyfile"         && did_any=1
-    if [[ "$did_any" -eq 1 ]]; then
-      ok "Backed up to $BACKUP_DIR"
-    fi
+    [[ -f "$ENV_FILE" ]]     && cp "$ENV_FILE"     "$BACKUP_DIR/.env"
+    [[ -f "$COMPOSE_FILE" ]] && cp "$COMPOSE_FILE" "$BACKUP_DIR/docker-compose.yml"
+    [[ -f "$CADDY_FILE" ]]   && cp "$CADDY_FILE"   "$BACKUP_DIR/Caddyfile"
+    ok "Backed up to $BACKUP_DIR"
 
-    # پاک‌سازی بکاپ‌های قدیمی‌تر از KEEP_BACKUPS
+    # نگه داشتن فقط N بکاپ آخر
     local all=( $(ls -1dt "$SCRIPT_DIR"/backup_* 2>/dev/null) )
     if (( ${#all[@]} > KEEP_BACKUPS )); then
-      for ((i=KEEP_BACKUPS; i<${#all[@]}; i++)); do
-        rm -rf "${all[$i]}"
-      done
+      for ((i=KEEP_BACKUPS; i<${#all[@]}; i++)); do rm -rf "${all[$i]}"; done
       info "Pruned old backups; kept last $KEEP_BACKUPS"
     fi
   else
     info "No config change → skipping backup"
   fi
 }
+
 
 
 # ---------------- Registry login (optional) ----------------
