@@ -257,7 +257,6 @@ collect_config(){
   # Sizing with a SINGLE number
   hdr "Sizing / Autoscale (based on active users)"
   read -p "Active users at peak (concurrent) [10000]: " ACTIVE; ACTIVE=${ACTIVE:-10000}
-  read -p "Avg requests per active user per minute [6]: " RPM_PER_USER; RPM_PER_USER=${RPM_PER_USER:-6}
   local RPS=$(( ACTIVE * RPM_PER_USER / 60 ))
   local need_mc=$(( RPS * 8 ))           # 8m per request (tunable)
   local web_repl=$(( (need_mc + 800) / 800 ))
@@ -484,7 +483,7 @@ EOF
   fi
 }
 
-# ---------------- Backup helper ----------------
+# ---- place this ABOVE configure_backup() ----
 write_backup_script(){
   cat >"$BACKUP_SCRIPT"<<'EOS'
 #!/usr/bin/env bash
@@ -500,7 +499,6 @@ if [[ "${RUN_LOCAL_DATA:-y}" =~ ^[yY]$ ]]; then
     pg_dump -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip > "$FILE"
 else
   echo "[INFO] dumping remote ${POSTGRES_DB} from host ${POSTGRES_HOST}…"
-  # use postgres:16 image with host networking to reach external DB
   docker run --rm --network host \
     -e PGPASSWORD="${POSTGRES_PASSWORD}" \
     postgres:16-alpine \
@@ -521,6 +519,7 @@ EOS
 }
 
 
+
 configure_backup(){
   hdr "Backup setup"
   write_backup_script
@@ -532,7 +531,7 @@ configure_backup(){
     if [[ -n "$TB" && -n "$TC" ]]; then
       {
         grep -q '^TELEGRAM_BOT_TOKEN=' "$ENV_FILE" && sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=${TB}|" "$ENV_FILE" || echo "TELEGRAM_BOT_TOKEN=${TB}" >> "$ENV_FILE"
-        grep -q '^TELEGRAM_CHAT_ID=' "$ENV_FILE" && sed -i "s|^TELEGRAM_CHAT_ID=.*|TELEGRAM_CHAT_ID=${TC}|" "$ENV_FILE" || echo "TELEGRAM_CHAT_ID=${TC}" >> "$ENV_FILE"
+        grep -q '^TELEGRAM_CHAT_ID=' "$ENV_FILE"  && sed -i "s|^TELEGRAM_CHAT_ID=.*|TELEGRAM_CHAT_ID=${TC}|" "$ENV_FILE"  || echo "TELEGRAM_CHAT_ID=${TC}"  >> "$ENV_FILE"
       }
       ok "Telegram delivery configured"
     else
@@ -542,21 +541,18 @@ configure_backup(){
 
   read -p "Create cron job for backups? (y/N): " C; C=${C:-N}
   if [[ "$C" =~ ^[yY]$ ]]; then
-    # بپرس چند ساعته یک‌بار؛ 1 تا 24
     HRS="$(ask_int_in_range 'Backup every how many hours? [6]: ' 6 1 24)"
-    # یک دقیقهٔ تصادفی برای پخش بار
     MIN=$(( RANDOM % 60 ))
-    # اگر هر 1 ساعت: MIN * * * *؛ اگر هر n ساعت: MIN */n * * *
     if [[ "$HRS" -eq 1 ]]; then
       CRON_EXPR="${MIN} * * * * ${BACKUP_SCRIPT} >/dev/null 2>&1"
     else
       CRON_EXPR="${MIN} */${HRS} * * * ${BACKUP_SCRIPT} >/dev/null 2>&1"
     fi
-    # نصب در کرون؛ قبلیِ همین اسکریپت را حذف و جدید را اضافه کن
     ( crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT" ; echo "$CRON_EXPR" ) | crontab -
     ok "Cron installed: every ${HRS}h at minute ${MIN}"
   fi
 }
+
 
 
 # ---------------- Compose wrapper ----------------
