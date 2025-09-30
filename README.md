@@ -2,6 +2,11 @@
 
 This repository contains the Docker Compose setup for the Digital Bot application with all its required services and proper domain configuration.
 
+**📖 Documentation:**
+- [English Documentation](README.md) (this file)
+- [راهنمای فارسی (Persian Guide)](README_FA.md)
+- [Detailed Installation Guide](INSTALLATION_GUIDE.md)
+
 ## Services and Domains
 
 The application consists of the following services with their respective domains:
