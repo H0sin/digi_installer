@@ -4,7 +4,7 @@
 
 ### نصب با یک دستور (سریع‌ترین روش)
 
-نصب با یک دستور (مناسب برای سرورهای با یا بدون دسترسی sudo):
+نصب با یک دستور:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
@@ -16,11 +16,21 @@ bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/in
 bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
 ```
 
-**برای مخزن‌های خصوصی**، ابتدا اطلاعات کاربری GitHub خود را وارد کنید:
+**پیش‌نیازها:**
+- اسکریپت نیاز به دسترسی `sudo` برای نصب Docker و مدیریت سرویس‌ها دارد
+- به عنوان کاربر عادی اجرا کنید (نه root) - اسکریپت در صورت نیاز از `sudo` استفاده می‌کند
+- برای Ubuntu 20.04+ و سیستم‌های مبتنی بر Debian مناسب است
+
+**برای مخزن‌های خصوصی**، ابتدا احراز هویت کنید:
 
 ```bash
-# کلون با اطلاعات کاربری GitHub
-git clone https://github.com/H0sin/digi_installer.git
+# استفاده از Personal Access Token
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/H0sin/digi_installer.git
+cd digi_installer
+./install.sh
+
+# یا استفاده از SSH
+git clone git@github.com:H0sin/digi_installer.git
 cd digi_installer
 ./install.sh
 ```

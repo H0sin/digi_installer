@@ -2,6 +2,72 @@
 
 This document provides examples for common installation scenarios.
 
+## Quick Installation Methods
+
+### One-Line Installation
+
+The fastest way to install is using a single command that downloads and runs the installer directly:
+
+#### Using curl:
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+#### Using wget:
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
+```
+
+**Compatibility:**
+- ✅ Works on servers with sudo access
+- ✅ Works on servers without sudo (with limited functionality)
+- ✅ Automatically detects permissions and adapts
+- ✅ Ubuntu 20.04+ and Debian-based systems
+
+### GitHub Authentication for Private Repositories
+
+If you're working with a private repository or need to authenticate with GitHub:
+
+#### Option 1: Using Personal Access Token (Recommended)
+
+1. Create a Personal Access Token on GitHub:
+   - Go to GitHub Settings → Developer settings → Personal access tokens
+   - Create a new token with `repo` access
+   
+2. Clone the repository with authentication:
+   ```bash
+   # Replace YOUR_USERNAME and YOUR_TOKEN
+   git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/H0sin/digi_installer.git
+   cd digi_installer
+   chmod +x install.sh
+   ./install.sh
+   ```
+
+#### Option 2: Using SSH Key
+
+1. Add your SSH key to GitHub (if not already done)
+2. Clone using SSH:
+   ```bash
+   git clone git@github.com:H0sin/digi_installer.git
+   cd digi_installer
+   chmod +x install.sh
+   ./install.sh
+   ```
+
+#### Option 3: Using GitHub CLI
+
+```bash
+# Authenticate with GitHub CLI
+gh auth login
+
+# Clone and install
+gh repo clone H0sin/digi_installer
+cd digi_installer
+./install.sh
+```
+
+---
+
 ## Table of Contents
 - [Full Stack Installation](#full-stack-installation)
 - [Database Server Only](#database-server-only)

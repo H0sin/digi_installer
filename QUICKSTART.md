@@ -16,7 +16,19 @@ Or using wget:
 bash <(wget -qO- https://raw.githubusercontent.com/H0sin/digi_installer/main/install.sh)
 ```
 
-**Note:** This works with or without sudo access. The script will automatically detect and use the appropriate permissions.
+**Requirements:**
+- Run as a regular user (not root)
+- Requires `sudo` privileges for Docker installation and service management
+- Ubuntu 20.04+ or Debian-based systems
+
+**For Private Repositories:**
+```bash
+# Using Personal Access Token
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/H0sin/digi_installer.git
+
+# Or using SSH
+git clone git@github.com:H0sin/digi_installer.git
+```
 
 ---
 
