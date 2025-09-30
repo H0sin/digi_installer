@@ -190,11 +190,23 @@ registry_login_prompt(){
   hdr "Docker Registry"
   read -p "Use a PRIVATE registry? (y/N): " USE_REG; USE_REG=${USE_REG:-N}
   if [[ "$USE_REG" =~ ^[yY]$ ]]; then
-    read -p "Registry URL (e.g. registry.example.com) [docker.io]: " REGISTRY_URL; REGISTRY_URL=${REGISTRY_URL:-docker.io}
-    read -p "Registry username: " REG_USER
-    read -s -p "Registry password: " REG_PASS; echo
-    echo "$REG_PASS" | docker login "$REGISTRY_URL" -u "$REG_USER" --password-stdin
-    ok "Logged in to $REGISTRY_URL"
+    while :; do
+      read -p "Registry URL (e.g. registry.example.com) [docker.io]: " REGISTRY_URL; REGISTRY_URL=${REGISTRY_URL:-docker.io}
+      read -p "Registry username: " REG_USER
+      read -s -p "Registry password: " REG_PASS; echo
+      if echo "$REG_PASS" | docker login "$REGISTRY_URL" -u "$REG_USER" --password-stdin; then
+        ok "Logged in to $REGISTRY_URL"
+        break
+      else
+        err "Login failed for $REGISTRY_URL"
+        read -p "Try again? (y/N): " TRY; TRY=${TRY:-N}
+        if [[ ! "$TRY" =~ ^[yY]$ ]]; then
+          warn "Skipping registry login"
+          REGISTRY_URL=""; REG_USER=""; REG_PASS=""
+          break
+        fi
+      fi
+    done
   else
     REGISTRY_URL=""; REG_USER=""; REG_PASS=""
     info "Using public images or already-logged-in registry"
